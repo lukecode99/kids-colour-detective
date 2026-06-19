@@ -185,15 +185,16 @@
     .tab-btn.active { color: #7B61FF; }
     .tab-icon { font-size: 22px; }
 
-    /* Shutter/capture button in top overlay */
+    /* Shutter/capture button — mid-right of camera feed */
     #shutter-btn {
-      width: 44px; height: 44px; border-radius: 50%; border: none;
-      background: #7B61FF; color: #fff;
-      font-size: 20px; cursor: pointer; display: flex; align-items: center;
-      justify-content: center; transition: transform 0.1s, opacity 0.2s;
-      box-shadow: 0 2px 12px rgba(123,97,255,0.5); flex-shrink: 0; margin-left: 10px;
+      position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+      z-index: 15; width: 52px; height: 52px; border-radius: 50%; border: none;
+      background: #7B61FF; color: #fff; font-size: 22px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 20px rgba(123,97,255,0.55);
+      transition: transform 0.1s, background 0.15s;
     }
-    #shutter-btn:active { transform: scale(0.88); }
+    #shutter-btn:active { transform: translateY(-50%) scale(0.88); }
 
     /* Capture feedback flash */
     #capture-flash {
@@ -292,6 +293,7 @@
   <canvas id="canvas" width="5" height="5"></canvas>
   <canvas id="capture-canvas" style="display:none"></canvas>
   <div id="capture-flash"></div>
+  <button id="shutter-btn" onclick="capturePhoto()" title="Save photo">📸</button>
 
   <div id="permission-screen">
     <h1>📷 Camera Access Needed</h1>
@@ -312,7 +314,6 @@
     <div id="top-buttons">
       <button id="voice-btn" onclick="toggleVoice()" title="Toggle voice">🔇</button>
       <button id="torch-btn" onclick="toggleTorch()" title="Toggle torch">🔦</button>
-      <button id="shutter-btn" onclick="capturePhoto()" title="Save photo">📸</button>
     </div>
   </div>
 
@@ -690,8 +691,8 @@ function capturePhoto() {
 
   // Brief shutter btn feedback
   const btn = document.getElementById('shutter-btn');
-  btn.textContent = '✓'; btn.style.background = '#4ade80';
-  setTimeout(() => { btn.textContent = '📸'; btn.style.background = '#7B61FF'; }, 800);
+  btn.textContent = '✓'; btn.style.background = '#4ade80'; btn.style.transform = 'translateY(-50%) scale(1.1)';
+  setTimeout(() => { btn.textContent = '📸'; btn.style.background = ''; btn.style.transform = ''; }, 800);
 }
 
 function selectMatch(entryId, idx) {
