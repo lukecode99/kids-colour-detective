@@ -95,7 +95,7 @@
 <body>
 <div id="app">
   <video id="video" autoplay playsinline muted></video>
-  <canvas id="canvas" width="1" height="1"></canvas>
+  <canvas id="canvas" width="5" height="5"></canvas>
 
   <div id="permission-screen">
     <h1>📷 Camera Access Needed</h1>
@@ -137,6 +137,7 @@ let complexMode = false;
 let scanning = false;
 let voiceOn = false;
 let lastSpokenName = '';
+const recentNames = [];  // last 3 readings for smoothing
 
 function toggleVoice() {
   voiceOn = !voiceOn;
@@ -188,7 +189,7 @@ async function startCamera() {
 }
 
 function startScanning() {
-  setInterval(sampleColor, 1500);
+  setInterval(sampleColor, 1000);
 }
 
 function sampleColor() {
@@ -199,16 +200,35 @@ function sampleColor() {
   if (!video.videoWidth) { scanning = false; return; }
 
   const ctx = canvas.getContext('2d');
-  // Sample center 15% of frame
-  const sw = Math.floor(video.videoWidth * 0.15);
-  const sh = Math.floor(video.videoHeight * 0.15);
+  // Sample center 12% of frame into 5×5 grid for stable average
+  const sw = Math.floor(video.videoWidth * 0.12);
+  const sh = Math.floor(video.videoHeight * 0.12);
   const sx = Math.floor((video.videoWidth - sw) / 2);
   const sy = Math.floor((video.videoHeight - sh) / 2);
-  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, 1, 1);
-  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, 5, 5);
+  const pixels = ctx.getImageData(0, 0, 5, 5).data;
+
+  // Average all 25 pixels
+  let rSum = 0, gSum = 0, bSum = 0;
+  for (let i = 0; i < 25; i++) {
+    rSum += pixels[i * 4];
+    gSum += pixels[i * 4 + 1];
+    bSum += pixels[i * 4 + 2];
+  }
+  const r = Math.round(rSum / 25);
+  const g = Math.round(gSum / 25);
+  const b = Math.round(bSum / 25);
 
   const info = getColorInfo(r, g, b, complexMode);
-  updateUI(info);
+
+  // Smooth: only update if same name appears 2 of last 3 reads
+  recentNames.push(info.name);
+  if (recentNames.length > 3) recentNames.shift();
+  const counts = {};
+  recentNames.forEach(n => counts[n] = (counts[n] || 0) + 1);
+  const dominant = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  if (dominant[1] >= 2) updateUI(info);
+
   scanning = false;
 }
 
@@ -250,13 +270,31 @@ function getColorInfo(r, g, b, complex) {
   const hex = rgbToHex(r, g, b);
   const [h, s, l] = rgbToHsl(r, g, b);
 
-  // Greyscale
-  if (s < 0.08) {
-    if (l < 0.15) return { name: 'Black', hex, emoji: '🖤' };
-    if (l < 0.35) return { name: complex ? 'Charcoal' : 'Dark Grey', hex, emoji: '🩶' };
-    if (l < 0.55) return { name: 'Grey', hex, emoji: '🩶' };
-    if (l < 0.80) return { name: complex ? 'Silver' : 'Light Grey', hex, emoji: '🩶' };
-    return { name: 'White', hex, emoji: '🤍' };
+  // Near-white
+  if (l > 0.90) return { name: complex ? 'White' : 'White', hex, emoji: '🤍' };
+  // Near-black
+  if (l < 0.10) return { name: 'Black', hex, emoji: '🖤' };
+
+  // Greyscale / near-neutral (raised threshold to catch desaturated real-world colours)
+  if (s < 0.12) {
+    if (l < 0.22) return { name: 'Black', hex, emoji: '🖤' };
+    if (l < 0.40) return { name: complex ? 'Charcoal' : 'Dark Grey', hex, emoji: '🩶' };
+    if (l < 0.60) return { name: 'Grey', hex, emoji: '🩶' };
+    if (l < 0.82) return { name: complex ? 'Silver' : 'Light Grey', hex, emoji: '🩶' };
+    return { name: complex ? 'Off-White' : 'White', hex, emoji: '🤍' };
+  }
+
+  // Brown zone: warm hue (15–45°) but desaturated or dark — catch before orange
+  if (h >= 15 && h < 45 && s < 0.55 && l < 0.50) {
+    if (!complex) return { name: 'Brown', hex, emoji: '🤎' };
+    if (l < 0.28) return { name: 'Chocolate', hex, emoji: '🤎' };
+    if (l < 0.40) return { name: 'Brown', hex, emoji: '🤎' };
+    return { name: 'Tan', hex, emoji: '🤎' };
+  }
+
+  // Beige: warm light neutrals
+  if (h >= 30 && h < 60 && s < 0.35 && l >= 0.70) {
+    return { name: complex ? 'Beige' : 'Beige', hex, emoji: '🤍' };
   }
 
   const name = complex ? getComplexName(h, s, l) : getSimpleName(h, s, l);
@@ -265,66 +303,73 @@ function getColorInfo(r, g, b, complex) {
 }
 
 function getSimpleName(h, s, l) {
-  if (l > 0.88) return 'White';
-  if (l < 0.12) return 'Black';
-  if (h < 15 || h >= 345) return l > 0.75 ? 'Pink' : 'Red';
-  if (h < 40) return 'Orange';
-  if (h < 70) return 'Yellow';
-  if (h < 155) return 'Green';
-  if (h < 175) return 'Teal';
-  if (h < 255) return 'Blue';
-  if (h < 285) return 'Purple';
-  if (h < 320) return 'Pink';
-  if (h < 345) return l > 0.6 ? 'Pink' : 'Red';
-  return 'Red';
+  if (h < 12 || h >= 348) return l > 0.62 ? 'Pink' : 'Red';
+  if (h < 20) return l > 0.70 ? 'Pink' : 'Red';
+  if (h < 48) return 'Orange';
+  if (h < 72) return 'Yellow';
+  if (h < 158) return 'Green';
+  if (h < 178) return 'Teal';
+  if (h < 258) return 'Blue';
+  if (h < 288) return 'Purple';
+  if (h < 330) return 'Pink';
+  return l > 0.62 ? 'Pink' : 'Red';
 }
 
 function getComplexName(h, s, l) {
-  if (l > 0.9) return 'White';
-  if (l < 0.1) return 'Black';
   if (h < 8 || h >= 350) {
-    if (l > 0.72) return 'Blush';
-    if (l > 0.45) return 'Rose';
-    if (s > 0.7) return 'Crimson';
+    if (l > 0.75) return 'Blush';
+    if (l > 0.50) return 'Rose';
+    if (s > 0.65) return 'Crimson';
     return 'Maroon';
   }
-  if (h < 20) {
-    if (l > 0.65) return 'Peach';
-    if (s > 0.7) return 'Vermillion';
+  if (h < 18) {
+    if (l > 0.70) return 'Salmon';
+    if (s > 0.70) return 'Vermillion';
     return 'Burnt Orange';
   }
-  if (h < 40) {
-    if (l > 0.65) return 'Apricot';
+  if (h < 35) {
+    if (l > 0.68) return 'Peach';
     return 'Tangerine';
   }
-  if (h < 55) return l > 0.65 ? 'Cream' : 'Gold';
-  if (h < 70) return l > 0.65 ? 'Lemon' : 'Yellow';
-  if (h < 100) return l > 0.5 ? 'Lime' : 'Olive';
-  if (h < 145) return l > 0.5 ? 'Mint' : l < 0.25 ? 'Forest Green' : 'Emerald';
-  if (h < 175) return 'Teal';
-  if (h < 200) return 'Cyan';
-  if (h < 225) return l > 0.55 ? 'Sky Blue' : 'Cerulean';
-  if (h < 255) {
-    if (l <= 0.26) return 'Navy';
+  if (h < 48) {
+    if (l > 0.68) return 'Apricot';
+    return 'Amber';
+  }
+  if (h < 58) return l > 0.68 ? 'Cream' : 'Gold';
+  if (h < 72) return l > 0.68 ? 'Lemon' : 'Yellow';
+  if (h < 100) return l > 0.55 ? 'Lime' : 'Olive';
+  if (h < 148) {
+    if (l < 0.22) return 'Dark Green';
+    if (l < 0.40) return 'Forest Green';
+    if (l > 0.60) return 'Mint';
+    return 'Emerald';
+  }
+  if (h < 178) return 'Teal';
+  if (h < 198) return l > 0.60 ? 'Light Blue' : 'Cyan';
+  if (h < 228) return l > 0.58 ? 'Sky Blue' : 'Cerulean';
+  if (h < 258) {
+    if (l < 0.25) return 'Navy';
     if (l < 0.45) return 'Royal Blue';
     return 'Cobalt';
   }
-  if (h < 285) return l > 0.6 ? 'Lavender' : 'Violet';
-  if (h < 320) return l > 0.7 ? 'Orchid' : s > 0.6 ? 'Magenta' : 'Purple';
-  if (h < 345) return l > 0.65 ? 'Pink' : 'Raspberry';
+  if (h < 288) return l > 0.62 ? 'Lavender' : 'Violet';
+  if (h < 325) return l > 0.68 ? 'Orchid' : s > 0.55 ? 'Magenta' : 'Purple';
+  if (h < 348) return l > 0.65 ? 'Pink' : 'Raspberry';
   return 'Red';
 }
 
 function getEmoji(h, s, l) {
   if (l > 0.88) return '🤍';
   if (l < 0.12) return '🖤';
-  if (h < 15 || h >= 345) return l > 0.72 ? '🩷' : '❤️';
-  if (h < 40) return '🧡';
-  if (h < 70) return '💛';
-  if (h < 155) return '💚';
-  if (h < 175) return '🩵';
-  if (h < 255) return '💙';
-  if (h < 285) return '💜';
+  // Brown check
+  if (h >= 15 && h < 45 && s < 0.55 && l < 0.50) return '🤎';
+  if (h < 15 || h >= 345) return l > 0.65 ? '🩷' : '❤️';
+  if (h < 48) return '🧡';
+  if (h < 72) return '💛';
+  if (h < 158) return '💚';
+  if (h < 178) return '🩵';
+  if (h < 258) return '💙';
+  if (h < 288) return '💜';
   if (h < 345) return '🩷';
   return '❤️';
 }
