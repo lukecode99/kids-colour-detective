@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
   <title>Colour Detective</title>
+  <!-- AdSense: replace ca-pub-PLACEHOLDER with your publisher ID from adsense.google.com -->
+  <!-- <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-PLACEHOLDER" crossorigin="anonymous"></script> -->
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #0D0E1A; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; height: 100dvh; }
@@ -63,7 +65,7 @@
 
     #bottom-panel {
       position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
-      background: rgba(13,14,26,0.92); padding-bottom: 34px;
+      background: rgba(13,14,26,0.92); padding-bottom: 70px;
     }
     #swatch { height: 8px; width: 100%; transition: background-color 0.4s ease; }
     #color-info { padding: 14px 24px 4px; }
@@ -167,6 +169,94 @@
     }
     #error-screen h1 { color: #fff; font-size: 24px; font-weight: 800; margin-bottom: 12px; }
     #error-screen p { color: rgba(255,255,255,0.55); font-size: 15px; line-height: 1.5; }
+
+    /* Tab bar */
+    #tab-bar {
+      position: absolute; bottom: 0; left: 0; right: 0; z-index: 30;
+      display: flex; background: rgba(13,14,26,0.97);
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding-bottom: env(safe-area-inset-bottom, 20px);
+    }
+    .tab-btn {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 10px 0 8px; border: none; background: transparent; cursor: pointer; color: rgba(255,255,255,0.4);
+      font-size: 10px; font-weight: 700; gap: 3px; letter-spacing: 0.05em; text-transform: uppercase;
+      transition: color 0.2s;
+    }
+    .tab-btn.active { color: #7B61FF; }
+    .tab-icon { font-size: 22px; }
+
+    /* Save button on paint chip */
+    .chip-save {
+      width: 28px; height: 28px; border-radius: 50%; border: none;
+      background: rgba(123,97,255,0.18); color: #7B61FF;
+      font-size: 14px; cursor: pointer; flex-shrink: 0; margin-left: 4px;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s;
+    }
+    .chip-save:active { background: rgba(123,97,255,0.4); }
+    .chip-save.saved { background: rgba(123,97,255,0.35); color: #fff; }
+
+    /* Buy button */
+    .chip-buy {
+      display: inline-flex; align-items: center;
+      background: rgba(123,97,255,0.15); color: #7B61FF;
+      border: 1px solid rgba(123,97,255,0.3); border-radius: 8px;
+      font-size: 10px; font-weight: 800; padding: 5px 8px; cursor: pointer;
+      flex-shrink: 0; text-decoration: none; white-space: nowrap;
+      transition: background 0.15s; letter-spacing: 0.02em;
+    }
+    .chip-buy:active { background: rgba(123,97,255,0.3); }
+
+    /* Saved colours view */
+    #saved-view {
+      position: absolute; inset: 0; z-index: 20;
+      background: #0D0E1A; display: none; flex-direction: column;
+      overflow: hidden;
+    }
+    #saved-view.visible { display: flex; }
+    #saved-header {
+      padding: 56px 20px 12px; display: flex; align-items: center; justify-content: space-between;
+    }
+    #saved-header h2 { color: #fff; font-size: 22px; font-weight: 800; }
+    #clear-saved {
+      background: rgba(255,255,255,0.08); border: none; border-radius: 20px;
+      color: rgba(255,255,255,0.5); font-size: 12px; font-weight: 700;
+      padding: 6px 14px; cursor: pointer;
+    }
+    #saved-list {
+      flex: 1; overflow-y: auto; padding: 8px 16px 80px;
+    }
+    #saved-list::-webkit-scrollbar { display: none; }
+    .saved-entry {
+      background: rgba(255,255,255,0.05); border-radius: 16px;
+      margin-bottom: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.07);
+    }
+    .saved-top {
+      display: flex; align-items: center; padding: 14px 16px 10px; gap: 14px;
+    }
+    .saved-swatch-big {
+      width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0;
+      border: 2px solid rgba(255,255,255,0.12);
+    }
+    .saved-info { flex: 1; min-width: 0; }
+    .saved-color-name { color: #fff; font-size: 18px; font-weight: 800; }
+    .saved-hex { color: rgba(255,255,255,0.4); font-size: 13px; font-weight: 600; }
+    .saved-date { color: rgba(255,255,255,0.3); font-size: 11px; margin-top: 2px; }
+    .saved-delete {
+      background: transparent; border: none; color: rgba(255,255,255,0.25);
+      font-size: 18px; cursor: pointer; padding: 4px;
+    }
+    .saved-matches {
+      display: flex; gap: 6px; padding: 0 16px 14px; overflow-x: auto;
+    }
+    .saved-matches::-webkit-scrollbar { display: none; }
+    #saved-empty {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      flex: 1; color: rgba(255,255,255,0.25); text-align: center; padding: 32px;
+    }
+    #saved-empty .empty-icon { font-size: 52px; margin-bottom: 16px; }
+    #saved-empty p { font-size: 15px; line-height: 1.5; }
   </style>
 </head>
 <body>
@@ -231,6 +321,29 @@
       </div>
     </div>
     <div id="paint-matches"></div>
+  </div>
+
+  <!-- Saved Colours View -->
+  <div id="saved-view">
+    <div id="saved-header">
+      <h2>💾 Saved Colours</h2>
+      <button id="clear-saved" onclick="clearAllSaved()">Clear all</button>
+    </div>
+    <div id="saved-list"></div>
+    <div id="saved-empty" style="display:none">
+      <div class="empty-icon">🎨</div>
+      <p>No saved colours yet.<br>Tap 💾 on any match while scanning to save it.</p>
+    </div>
+  </div>
+
+  <!-- Tab Bar -->
+  <div id="tab-bar">
+    <button class="tab-btn active" id="tab-scanner" onclick="switchTab('scanner')">
+      <span class="tab-icon">📷</span>Scanner
+    </button>
+    <button class="tab-btn" id="tab-saved" onclick="switchTab('saved')">
+      <span class="tab-icon">💾</span>Saved
+    </button>
   </div>
 </div>
 
@@ -450,6 +563,16 @@ function updateBrandFilter() {
   if (lastR !== null) renderPaintMatches(lastR, lastG, lastB);
 }
 
+// ---- Affiliate URLs (swap in real Awin affiliate ID to activate tracking) ----
+const AWIN_AFFILIATE_ID = null; // Set your Awin ID here e.g. 12345
+const AWIN_MERCHANTS = { 'Dulux': '12009', 'F&B': '14052' };
+function affiliateUrl(brand, url) {
+  if (AWIN_AFFILIATE_ID && AWIN_MERCHANTS[brand]) {
+    return `https://www.awin1.com/cread.php?awinmid=${AWIN_MERCHANTS[brand]}&awinaffid=${AWIN_AFFILIATE_ID}&ued=${encodeURIComponent(url)}`;
+  }
+  return url;
+}
+
 // ---- Paint matching ----
 function rgbToXyz(r, g, b) {
   let rr = r/255, gg = g/255, bb = b/255;
@@ -484,20 +607,121 @@ function renderPaintMatches(r, g, b) {
   lastR = r; lastG = g; lastB = b;
   const matches = findNearestPaints(r, g, b, 3);
   const el = document.getElementById('paint-matches');
-  el.innerHTML = matches.map(m => {
+  const hex = rgbToHex(r, g, b);
+  const colorName = document.getElementById('color-name').textContent.replace(/^.\s/, '') || 'Colour';
+  el.innerHTML = matches.map((m, i) => {
     const pct = Math.max(0, Math.round(100 * (1 - m.de / 35)));
     const pctColor = pct >= 80 ? '#4ade80' : pct >= 60 ? '#fbbf24' : '#f87171';
     return `
-    <a class="paint-chip" href="${m.url}" target="_blank" rel="noopener">
-      <div class="chip-swatch" style="background:${m.hex}"></div>
-      <div class="chip-text">
-        <div class="chip-name">${m.name}</div>
-        <div class="chip-brand">${m.brand}</div>
-      </div>
-      <div class="chip-pct" style="color:${pctColor}">${pct}%</div>
-    </a>`;
+    <div style="display:flex;align-items:center;gap:4px">
+      <a class="paint-chip" href="${m.url}" target="_blank" rel="noopener">
+        <div class="chip-swatch" style="background:${m.hex}"></div>
+        <div class="chip-text">
+          <div class="chip-name">${m.name}</div>
+          <div class="chip-brand">${m.brand}</div>
+        </div>
+        <div class="chip-pct" style="color:${pctColor}">${pct}%</div>
+      </a>
+      <button class="chip-save" onclick="saveColour('${hex}','${colorName.replace(/'/g,"\\'")}',${JSON.stringify(matches).replace(/'/g,"\\'")},this)" title="Save">💾</button>
+      <a class="chip-buy" href="${affiliateUrl(m.brand, m.url)}" target="_blank" rel="noopener noreferrer">Buy</a>
+    </div>`;
   }).join('');
 }
+
+// ---- Saved Colours ----
+let savedColours = JSON.parse(localStorage.getItem('savedColours') || '[]');
+
+function saveColour(hex, colorName, matches, btn) {
+  const entry = {
+    id: Date.now(),
+    hex,
+    colorName,
+    matches: matches.map(m => ({ hex: m.hex, name: m.name, brand: m.brand, url: m.url, de: m.de })),
+    date: new Date().toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' })
+  };
+  savedColours.unshift(entry);
+  if (savedColours.length > 50) savedColours.pop();
+  localStorage.setItem('savedColours', JSON.stringify(savedColours));
+  btn.textContent = '✓';
+  btn.classList.add('saved');
+  btn.disabled = true;
+  updateSavedBadge();
+}
+
+function updateSavedBadge() {
+  const tabBtn = document.getElementById('tab-saved');
+  const n = savedColours.length;
+  tabBtn.innerHTML = `<span class="tab-icon">💾</span>Saved${n > 0 ? ' (' + n + ')' : ''}`;
+}
+
+function clearAllSaved() {
+  if (!savedColours.length) return;
+  if (!confirm('Clear all saved colours?')) return;
+  savedColours = [];
+  localStorage.setItem('savedColours', JSON.stringify(savedColours));
+  renderSavedView();
+  updateSavedBadge();
+}
+
+function deleteSaved(id) {
+  savedColours = savedColours.filter(e => e.id !== id);
+  localStorage.setItem('savedColours', JSON.stringify(savedColours));
+  renderSavedView();
+  updateSavedBadge();
+}
+
+function renderSavedView() {
+  const list = document.getElementById('saved-list');
+  const empty = document.getElementById('saved-empty');
+  if (!savedColours.length) {
+    list.innerHTML = '';
+    empty.style.display = 'flex';
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = savedColours.map(e => {
+    const chips = e.matches.map(m => {
+      const pct = Math.max(0, Math.round(100 * (1 - m.de / 35)));
+      const pctColor = pct >= 80 ? '#4ade80' : pct >= 60 ? '#fbbf24' : '#f87171';
+      return `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+        <a class="paint-chip" href="${m.url}" target="_blank" rel="noopener" style="min-width:auto">
+          <div class="chip-swatch" style="background:${m.hex}"></div>
+          <div class="chip-text"><div class="chip-name">${m.name}</div><div class="chip-brand">${m.brand}</div></div>
+          <div class="chip-pct" style="color:${pctColor}">${pct}%</div>
+        </a>
+        <a class="chip-buy" href="${affiliateUrl(m.brand, m.url)}" target="_blank" rel="noopener noreferrer">Buy</a>
+      </div>`;
+    }).join('');
+    return `<div class="saved-entry">
+      <div class="saved-top">
+        <div class="saved-swatch-big" style="background:${e.hex}"></div>
+        <div class="saved-info">
+          <div class="saved-color-name">${e.colorName}</div>
+          <div class="saved-hex">${e.hex}</div>
+          <div class="saved-date">${e.date}</div>
+        </div>
+        <button class="saved-delete" onclick="deleteSaved(${e.id})">✕</button>
+      </div>
+      <div class="saved-matches">${chips}</div>
+    </div>`;
+  }).join('');
+}
+
+function switchTab(tab) {
+  const scannerActive = tab === 'scanner';
+  document.getElementById('tab-scanner').classList.toggle('active', scannerActive);
+  document.getElementById('tab-saved').classList.toggle('active', !scannerActive);
+  const savedView = document.getElementById('saved-view');
+  if (scannerActive) {
+    savedView.classList.remove('visible');
+  } else {
+    renderSavedView();
+    savedView.classList.add('visible');
+  }
+}
+
+// Init saved badge on load
+updateSavedBadge();
 
 // ---- Colour naming logic ----
 function rgbToHsl(r, g, b) {
