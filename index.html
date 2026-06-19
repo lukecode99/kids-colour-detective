@@ -16,17 +16,19 @@
 
     #top-overlay {
       position: absolute; top: 0; left: 0; right: 0; z-index: 10;
-      display: flex; justify-content: flex-end; padding: 52px 16px 12px;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      padding: 52px 16px 12px;
     }
-    #toggle {
-      display: flex; background: rgba(0,0,0,0.5); border-radius: 24px; padding: 4px;
+    #color-info-top { flex: 1; min-width: 0; }
+    #color-info-top #color-name {
+      color: #fff; font-size: clamp(24px, 7vw, 38px); font-weight: 800; letter-spacing: -1px;
+      text-shadow: 0 1px 10px rgba(0,0,0,0.7); transition: opacity 0.3s;
     }
-    .pill {
-      padding: 8px 18px; border-radius: 20px; border: none; background: transparent;
-      color: rgba(255,255,255,0.55); font-size: 14px; font-weight: 700; cursor: pointer;
-      transition: all 0.2s;
+    #color-info-top #color-hex {
+      color: rgba(255,255,255,0.7); font-size: 15px; font-weight: 600;
+      text-shadow: 0 1px 6px rgba(0,0,0,0.5); margin-top: 2px;
     }
-    .pill.active { background: #7B61FF; color: #fff; }
+    #top-buttons { display: flex; gap: 10px; flex-shrink: 0; }
     #voice-btn, #torch-btn {
       width: 44px; height: 44px; border-radius: 50%; border: none;
       background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.55);
@@ -69,11 +71,8 @@
     }
     #swatch { height: 8px; width: 100%; transition: background-color 0.4s ease; }
     #color-info { padding: 14px 24px 4px; }
-    #color-name {
-      color: #fff; font-size: clamp(32px, 10vw, 48px); font-weight: 800; letter-spacing: -1px;
-      transition: opacity 0.3s;
-    }
-    #color-hex { color: rgba(255,255,255,0.55); font-size: 20px; font-weight: 600; margin-top: 2px; display: none; }
+    #color-name { transition: opacity 0.3s; }
+    #color-hex { display: block; }
 
     /* Brand filter */
     #brand-filter-row {
@@ -276,12 +275,14 @@
   </div>
 
   <div id="top-overlay">
-    <div id="toggle">
-      <button class="pill active" id="simple-btn" onclick="setMode(false)">Simple</button>
-      <button class="pill" id="complex-btn" onclick="setMode(true)">Complex</button>
+    <div id="color-info-top">
+      <div id="color-name">🔍 Detecting…</div>
+      <div id="color-hex">#808080</div>
     </div>
-    <button id="voice-btn" onclick="toggleVoice()" title="Toggle voice">🔇</button>
-    <button id="torch-btn" onclick="toggleTorch()" title="Toggle torch">🔦</button>
+    <div id="top-buttons">
+      <button id="voice-btn" onclick="toggleVoice()" title="Toggle voice">🔇</button>
+      <button id="torch-btn" onclick="toggleTorch()" title="Toggle torch">🔦</button>
+    </div>
   </div>
 
   <div id="crosshair">
@@ -293,10 +294,6 @@
 
   <div id="bottom-panel">
     <div id="swatch" style="background-color: #808080"></div>
-    <div id="color-info">
-      <div id="color-name">🔍 Detecting…</div>
-      <div id="color-hex">#808080</div>
-    </div>
     <div id="lighting-bar">
       <div id="lighting-dot"></div>
       <span id="lighting-label">Use natural daylight for best results</span>
@@ -348,7 +345,7 @@
 </div>
 
 <script>
-let complexMode = false;
+let complexMode = true;
 let scanning = false;
 let voiceOn = false;
 let torchOn = false;
@@ -394,12 +391,6 @@ async function toggleTorch() {
   }
 }
 
-function setMode(complex) {
-  complexMode = complex;
-  document.getElementById('simple-btn').className = 'pill' + (!complex ? ' active' : '');
-  document.getElementById('complex-btn').className = 'pill' + (complex ? ' active' : '');
-  document.getElementById('color-hex').style.display = complex ? 'block' : 'none';
-}
 
 async function startCamera() {
   try {
