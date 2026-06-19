@@ -185,18 +185,15 @@
     .tab-btn.active { color: #7B61FF; }
     .tab-icon { font-size: 22px; }
 
-    /* Central shutter/capture button */
+    /* Shutter/capture button in top overlay */
     #shutter-btn {
-      position: absolute; bottom: calc(env(safe-area-inset-bottom, 20px) + 10px);
-      left: 50%; transform: translateX(-50%); z-index: 31;
-      width: 60px; height: 60px; border-radius: 50%;
-      background: #7B61FF; border: 4px solid rgba(13,14,26,0.97);
-      cursor: pointer; display: flex; align-items: center; justify-content: center;
-      font-size: 26px; box-shadow: 0 4px 20px rgba(123,97,255,0.5);
-      transition: transform 0.1s, box-shadow 0.1s;
+      width: 44px; height: 44px; border-radius: 50%; border: none;
+      background: #7B61FF; color: #fff;
+      font-size: 20px; cursor: pointer; display: flex; align-items: center;
+      justify-content: center; transition: transform 0.1s, opacity 0.2s;
+      box-shadow: 0 2px 12px rgba(123,97,255,0.5); flex-shrink: 0; margin-left: 10px;
     }
-    #shutter-btn:active { transform: translateX(-50%) scale(0.88); box-shadow: 0 2px 10px rgba(123,97,255,0.4); }
-    #shutter-btn.flash { background: #fff; }
+    #shutter-btn:active { transform: scale(0.88); }
 
     /* Capture feedback flash */
     #capture-flash {
@@ -315,6 +312,7 @@
     <div id="top-buttons">
       <button id="voice-btn" onclick="toggleVoice()" title="Toggle voice">🔇</button>
       <button id="torch-btn" onclick="toggleTorch()" title="Toggle torch">🔦</button>
+      <button id="shutter-btn" onclick="capturePhoto()" title="Save photo">📸</button>
     </div>
   </div>
 
@@ -376,8 +374,6 @@
       <span class="tab-icon">💾</span>Saved
     </button>
   </div>
-  <!-- Shutter button floats above tab bar -->
-  <button id="shutter-btn" onclick="capturePhoto()" title="Capture photo">📸</button>
 </div>
 
 <script>
@@ -694,8 +690,8 @@ function capturePhoto() {
 
   // Brief shutter btn feedback
   const btn = document.getElementById('shutter-btn');
-  btn.textContent = '✓';
-  setTimeout(() => { btn.textContent = '📸'; }, 800);
+  btn.textContent = '✓'; btn.style.background = '#4ade80';
+  setTimeout(() => { btn.textContent = '📸'; btn.style.background = '#7B61FF'; }, 800);
 }
 
 function selectMatch(entryId, idx) {
@@ -781,6 +777,7 @@ function switchTab(tab) {
   const scannerActive = tab === 'scanner';
   document.getElementById('tab-scanner').classList.toggle('active', scannerActive);
   document.getElementById('tab-saved').classList.toggle('active', !scannerActive);
+  document.getElementById('shutter-btn').style.display = scannerActive ? 'flex' : 'none';
   const savedView = document.getElementById('saved-view');
   if (scannerActive) {
     savedView.classList.remove('visible');
