@@ -25,13 +25,15 @@
       transition: all 0.2s;
     }
     .pill.active { background: #7B61FF; color: #fff; }
-    #voice-btn {
+    #voice-btn, #torch-btn {
       width: 44px; height: 44px; border-radius: 50%; border: none;
       background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.55);
       font-size: 20px; cursor: pointer; display: flex; align-items: center;
       justify-content: center; transition: all 0.2s; margin-left: 10px;
     }
     #voice-btn.active { background: #7B61FF; color: #fff; }
+    #torch-btn.active { background: #f59e0b; color: #000; }
+    #torch-btn.unsupported { opacity: 0.35; cursor: default; }
 
     #crosshair {
       position: absolute; top: 50%; left: 50%; z-index: 10;
@@ -189,6 +191,7 @@
       <button class="pill" id="complex-btn" onclick="setMode(true)">Complex</button>
     </div>
     <button id="voice-btn" onclick="toggleVoice()" title="Toggle voice">🔇</button>
+    <button id="torch-btn" onclick="toggleTorch()" title="Toggle torch">🔦</button>
   </div>
 
   <div id="crosshair">
@@ -235,6 +238,7 @@
 let complexMode = false;
 let scanning = false;
 let voiceOn = false;
+let torchOn = false;
 let lastSpokenName = '';
 const recentNames = [];
 let selectedBrands = new Set(['Dulux', 'Crown', 'F&B', 'RAL']);
@@ -258,6 +262,22 @@ function speakColor(name) {
   const u = new SpeechSynthesisUtterance(name);
   u.rate = 0.9; u.pitch = 1.1;
   window.speechSynthesis.speak(u);
+}
+
+async function toggleTorch() {
+  const video = document.getElementById('video');
+  const btn = document.getElementById('torch-btn');
+  if (!video.srcObject) return;
+  const track = video.srcObject.getVideoTracks()[0];
+  torchOn = !torchOn;
+  try {
+    await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+    btn.className = torchOn ? 'active' : '';
+  } catch(e) {
+    torchOn = false;
+    btn.className = 'unsupported';
+    btn.title = 'Torch not supported on this browser (try Android Chrome)';
+  }
 }
 
 function setMode(complex) {
@@ -316,6 +336,14 @@ function sampleColor() {
   const g = Math.round(gSum / 25);
   const b = Math.round(bSum / 25);
 
+  // Pixel variance — high variance means too close (surface texture visible)
+  let varSum = 0;
+  for (let i = 0; i < 25; i++) {
+    const dr = pixels[i*4] - r, dg = pixels[i*4+1] - g, db = pixels[i*4+2] - b;
+    varSum += dr*dr + dg*dg + db*db;
+  }
+  const variance = varSum / 25;
+
   const info = getColorInfo(r, g, b, complexMode);
   const avgLum = Math.round((r * 0.299 + g * 0.587 + b * 0.114));
 
@@ -324,12 +352,12 @@ function sampleColor() {
   const counts = {};
   recentNames.forEach(n => counts[n] = (counts[n] || 0) + 1);
   const dominant = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-  if (dominant[1] >= 2) updateUI(info, r, g, b, avgLum);
+  if (dominant[1] >= 2) updateUI(info, r, g, b, avgLum, variance);
 
   scanning = false;
 }
 
-function updateUI({ name, hex, emoji }, r, g, b, avgLum) {
+function updateUI({ name, hex, emoji }, r, g, b, avgLum, variance) {
   const nameEl = document.getElementById('color-name');
   nameEl.style.opacity = '0.5';
   setTimeout(() => {
@@ -339,25 +367,45 @@ function updateUI({ name, hex, emoji }, r, g, b, avgLum) {
     document.getElementById('color-hex').textContent = hex;
     speakColor(name);
     renderPaintMatches(r, g, b);
-    updateLighting(avgLum);
+    updateLighting(avgLum, variance);
   }, 150);
 }
 
-function updateLighting(lum) {
+function updateLighting(lum, variance) {
   const dot = document.getElementById('lighting-dot');
   const lbl = document.getElementById('lighting-label');
-  if (lum < 40) {
+  // Closeness check: high pixel variance = surface texture visible = too close
+  if (variance > 1200) {
     dot.style.background = '#f87171';
-    lbl.textContent = 'Too dark — try brighter light';
-  } else if (lum < 90) {
-    dot.style.background = '#fbbf24';
-    lbl.textContent = 'Dim — results may vary';
-  } else if (lum > 230) {
-    dot.style.background = '#fbbf24';
-    lbl.textContent = 'Very bright — avoid glare';
+    lbl.textContent = 'Too close — move back a little';
+    return;
+  }
+  if (torchOn) {
+    // With torch on, brightness indicates distance
+    if (lum > 235) {
+      dot.style.background = '#fbbf24';
+      lbl.textContent = 'Too close — move back slightly';
+    } else if (lum < 50) {
+      dot.style.background = '#f87171';
+      lbl.textContent = 'Too far — move closer';
+    } else {
+      dot.style.background = '#4ade80';
+      lbl.textContent = 'Good — torch active';
+    }
   } else {
-    dot.style.background = '#4ade80';
-    lbl.textContent = 'Good lighting';
+    if (lum < 40) {
+      dot.style.background = '#f87171';
+      lbl.textContent = 'Too dark — try brighter light or use torch';
+    } else if (lum < 90) {
+      dot.style.background = '#fbbf24';
+      lbl.textContent = 'Dim — tap 🔦 or move to better light';
+    } else if (lum > 235) {
+      dot.style.background = '#fbbf24';
+      lbl.textContent = 'Very bright — avoid direct glare';
+    } else {
+      dot.style.background = '#4ade80';
+      lbl.textContent = 'Good lighting';
+    }
   }
 }
 
