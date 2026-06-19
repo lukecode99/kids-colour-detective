@@ -241,6 +241,7 @@ let voiceOn = false;
 let torchOn = false;
 let lastSpokenName = '';
 const recentNames = [];
+const recentLums = [];
 let selectedBrands = new Set(['Dulux', 'Crown', 'F&B', 'RAL']);
 let lastR = null, lastG = null, lastB = null;
 
@@ -347,17 +348,23 @@ function sampleColor() {
   const info = getColorInfo(r, g, b, complexMode);
   const avgLum = Math.round((r * 0.299 + g * 0.587 + b * 0.114));
 
+  recentLums.push(avgLum);
+  if (recentLums.length > 4) recentLums.shift();
+  const lumSpread = recentLums.length >= 3
+    ? Math.max(...recentLums) - Math.min(...recentLums)
+    : 0;
+
   recentNames.push(info.name);
   if (recentNames.length > 3) recentNames.shift();
   const counts = {};
   recentNames.forEach(n => counts[n] = (counts[n] || 0) + 1);
   const dominant = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-  if (dominant[1] >= 2) updateUI(info, r, g, b, avgLum, variance);
+  if (dominant[1] >= 2) updateUI(info, r, g, b, avgLum, variance, lumSpread);
 
   scanning = false;
 }
 
-function updateUI({ name, hex, emoji }, r, g, b, avgLum, variance) {
+function updateUI({ name, hex, emoji }, r, g, b, avgLum, variance, lumSpread) {
   const nameEl = document.getElementById('color-name');
   nameEl.style.opacity = '0.5';
   setTimeout(() => {
@@ -367,21 +374,29 @@ function updateUI({ name, hex, emoji }, r, g, b, avgLum, variance) {
     document.getElementById('color-hex').textContent = hex;
     speakColor(name);
     renderPaintMatches(r, g, b);
-    updateLighting(avgLum, variance);
+    updateLighting(avgLum, variance, lumSpread);
   }, 150);
 }
 
-function updateLighting(lum, variance) {
+function updateLighting(lum, variance, lumSpread) {
   const dot = document.getElementById('lighting-dot');
   const lbl = document.getElementById('lighting-label');
-  // Closeness check: high pixel variance = surface texture visible = too close
+
+  // Too close: spatial variance high = texture/grain visible
   if (variance > 1200) {
     dot.style.background = '#f87171';
     lbl.textContent = 'Too close — move back a little';
     return;
   }
+
+  // Too far (no torch): temporal instability — reading jumps between frames
+  if (!torchOn && lumSpread > 30) {
+    dot.style.background = '#fbbf24';
+    lbl.textContent = 'Unstable — move closer to the surface';
+    return;
+  }
+
   if (torchOn) {
-    // With torch on, brightness indicates distance
     if (lum > 235) {
       dot.style.background = '#fbbf24';
       lbl.textContent = 'Too close — move back slightly';
@@ -395,7 +410,7 @@ function updateLighting(lum, variance) {
   } else {
     if (lum < 40) {
       dot.style.background = '#f87171';
-      lbl.textContent = 'Too dark — try brighter light or use torch';
+      lbl.textContent = 'Too dark — try brighter light or use 🔦';
     } else if (lum < 90) {
       dot.style.background = '#fbbf24';
       lbl.textContent = 'Dim — tap 🔦 or move to better light';
