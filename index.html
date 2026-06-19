@@ -35,7 +35,7 @@
 
     #crosshair {
       position: absolute; top: 50%; left: 50%; z-index: 10;
-      transform: translate(-50%, -50%);
+      transform: translate(-50%, -60%);
       pointer-events: none;
     }
     #crosshair-circle {
@@ -61,15 +61,39 @@
 
     #bottom-panel {
       position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
-      background: rgba(13,14,26,0.88); padding-bottom: 40px;
+      background: rgba(13,14,26,0.92); padding-bottom: 34px;
     }
     #swatch { height: 8px; width: 100%; transition: background-color 0.4s ease; }
-    #color-info { padding: 16px 24px 8px; }
+    #color-info { padding: 14px 24px 4px; }
     #color-name {
-      color: #fff; font-size: clamp(36px, 12vw, 52px); font-weight: 800; letter-spacing: -1px;
+      color: #fff; font-size: clamp(32px, 10vw, 48px); font-weight: 800; letter-spacing: -1px;
       transition: opacity 0.3s;
     }
-    #color-hex { color: rgba(255,255,255,0.55); font-size: 22px; font-weight: 600; margin-top: 2px; display: none; }
+    #color-hex { color: rgba(255,255,255,0.55); font-size: 20px; font-weight: 600; margin-top: 2px; display: none; }
+
+    /* Paint matches */
+    #paint-matches {
+      display: flex; gap: 8px; padding: 8px 16px 0;
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+    }
+    #paint-matches::-webkit-scrollbar { display: none; }
+    .paint-chip {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(255,255,255,0.08); border-radius: 12px;
+      padding: 7px 10px; flex-shrink: 0; min-width: 0;
+      cursor: default;
+    }
+    .chip-swatch {
+      width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+      border: 1.5px solid rgba(255,255,255,0.15);
+    }
+    .chip-text { min-width: 0; }
+    .chip-name {
+      color: #fff; font-size: 12px; font-weight: 700;
+      white-space: nowrap; max-width: 130px;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+    .chip-brand { color: rgba(255,255,255,0.45); font-size: 10px; font-weight: 600; white-space: nowrap; }
 
     #permission-screen {
       position: absolute; inset: 0; z-index: 20;
@@ -129,6 +153,7 @@
       <div id="color-name">🔍 Detecting…</div>
       <div id="color-hex">#808080</div>
     </div>
+    <div id="paint-matches"></div>
   </div>
 </div>
 
@@ -137,7 +162,7 @@ let complexMode = false;
 let scanning = false;
 let voiceOn = false;
 let lastSpokenName = '';
-const recentNames = [];  // last 3 readings for smoothing
+const recentNames = [];
 
 function toggleVoice() {
   voiceOn = !voiceOn;
@@ -145,7 +170,6 @@ function toggleVoice() {
   btn.textContent = voiceOn ? '🔊' : '🔇';
   btn.className = voiceOn ? 'active' : '';
   if (voiceOn && window.speechSynthesis) {
-    // Unlock speech on iOS — must call from a user gesture
     const u = new SpeechSynthesisUtterance('');
     window.speechSynthesis.speak(u);
   }
@@ -156,8 +180,7 @@ function speakColor(name) {
   lastSpokenName = name;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(name);
-  u.rate = 0.9;
-  u.pitch = 1.1;
+  u.rate = 0.9; u.pitch = 1.1;
   window.speechSynthesis.speak(u);
 }
 
@@ -200,7 +223,6 @@ function sampleColor() {
   if (!video.videoWidth) { scanning = false; return; }
 
   const ctx = canvas.getContext('2d');
-  // Sample center 12% of frame into 5×5 grid for stable average
   const sw = Math.floor(video.videoWidth * 0.12);
   const sh = Math.floor(video.videoHeight * 0.12);
   const sx = Math.floor((video.videoWidth - sw) / 2);
@@ -208,7 +230,6 @@ function sampleColor() {
   ctx.drawImage(video, sx, sy, sw, sh, 0, 0, 5, 5);
   const pixels = ctx.getImageData(0, 0, 5, 5).data;
 
-  // Average all 25 pixels
   let rSum = 0, gSum = 0, bSum = 0;
   for (let i = 0; i < 25; i++) {
     rSum += pixels[i * 4];
@@ -221,18 +242,17 @@ function sampleColor() {
 
   const info = getColorInfo(r, g, b, complexMode);
 
-  // Smooth: only update if same name appears 2 of last 3 reads
   recentNames.push(info.name);
   if (recentNames.length > 3) recentNames.shift();
   const counts = {};
   recentNames.forEach(n => counts[n] = (counts[n] || 0) + 1);
   const dominant = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-  if (dominant[1] >= 2) updateUI(info);
+  if (dominant[1] >= 2) updateUI(info, r, g, b);
 
   scanning = false;
 }
 
-function updateUI({ name, hex, emoji }) {
+function updateUI({ name, hex, emoji }, r, g, b) {
   const nameEl = document.getElementById('color-name');
   nameEl.style.opacity = '0.5';
   setTimeout(() => {
@@ -241,7 +261,51 @@ function updateUI({ name, hex, emoji }) {
     document.getElementById('swatch').style.backgroundColor = hex;
     document.getElementById('color-hex').textContent = hex;
     speakColor(name);
+    renderPaintMatches(r, g, b);
   }, 150);
+}
+
+// ---- Paint matching ----
+function rgbToXyz(r, g, b) {
+  let rr = r/255, gg = g/255, bb = b/255;
+  rr = rr > 0.04045 ? Math.pow((rr+0.055)/1.055, 2.4) : rr/12.92;
+  gg = gg > 0.04045 ? Math.pow((gg+0.055)/1.055, 2.4) : gg/12.92;
+  bb = bb > 0.04045 ? Math.pow((bb+0.055)/1.055, 2.4) : bb/12.92;
+  return [
+    (rr*0.4124 + gg*0.3576 + bb*0.1805)/0.95047,
+    (rr*0.2126 + gg*0.7152 + bb*0.0722)/1.00000,
+    (rr*0.0193 + gg*0.1192 + bb*0.9505)/1.08883
+  ];
+}
+function labF(t) { return t > 0.008856 ? Math.cbrt(t) : (7.787*t + 16/116); }
+function rgbToLab(r, g, b) {
+  const [x,y,z] = rgbToXyz(r,g,b);
+  const fx=labF(x), fy=labF(y), fz=labF(z);
+  return [116*fy-16, 500*(fx-fy), 200*(fy-fz)];
+}
+
+function findNearestPaints(r, g, b, n) {
+  const [L,A,B] = rgbToLab(r,g,b);
+  const scored = PAINTS.map(p => {
+    const dL=L-p[0], dA=A-p[1], dB=B-p[2];
+    return { de: Math.sqrt(dL*dL+dA*dA+dB*dB), hex: p[3], name: p[4], brand: p[5] };
+  });
+  scored.sort((a,b) => a.de - b.de);
+  return scored.slice(0, n);
+}
+
+function renderPaintMatches(r, g, b) {
+  const matches = findNearestPaints(r, g, b, 3);
+  const el = document.getElementById('paint-matches');
+  el.innerHTML = matches.map(m => `
+    <div class="paint-chip">
+      <div class="chip-swatch" style="background:${m.hex}"></div>
+      <div class="chip-text">
+        <div class="chip-name">${m.name}</div>
+        <div class="chip-brand">${m.brand}</div>
+      </div>
+    </div>
+  `).join('');
 }
 
 // ---- Colour naming logic ----
@@ -270,12 +334,9 @@ function getColorInfo(r, g, b, complex) {
   const hex = rgbToHex(r, g, b);
   const [h, s, l] = rgbToHsl(r, g, b);
 
-  // Near-white
-  if (l > 0.90) return { name: complex ? 'White' : 'White', hex, emoji: '🤍' };
-  // Near-black
+  if (l > 0.90) return { name: 'White', hex, emoji: '🤍' };
   if (l < 0.10) return { name: 'Black', hex, emoji: '🖤' };
 
-  // Greyscale / near-neutral (raised threshold to catch desaturated real-world colours)
   if (s < 0.12) {
     if (l < 0.22) return { name: 'Black', hex, emoji: '🖤' };
     if (l < 0.40) return { name: complex ? 'Charcoal' : 'Dark Grey', hex, emoji: '🩶' };
@@ -284,7 +345,6 @@ function getColorInfo(r, g, b, complex) {
     return { name: complex ? 'Off-White' : 'White', hex, emoji: '🤍' };
   }
 
-  // Brown zone: warm hue (15–45°) but desaturated or dark — catch before orange
   if (h >= 15 && h < 45 && s < 0.55 && l < 0.50) {
     if (!complex) return { name: 'Brown', hex, emoji: '🤎' };
     if (l < 0.28) return { name: 'Chocolate', hex, emoji: '🤎' };
@@ -292,9 +352,8 @@ function getColorInfo(r, g, b, complex) {
     return { name: 'Tan', hex, emoji: '🤎' };
   }
 
-  // Beige: warm light neutrals
   if (h >= 30 && h < 60 && s < 0.35 && l >= 0.70) {
-    return { name: complex ? 'Beige' : 'Beige', hex, emoji: '🤍' };
+    return { name: 'Beige', hex, emoji: '🤍' };
   }
 
   const name = complex ? getComplexName(h, s, l) : getSimpleName(h, s, l);
@@ -361,7 +420,6 @@ function getComplexName(h, s, l) {
 function getEmoji(h, s, l) {
   if (l > 0.88) return '🤍';
   if (l < 0.12) return '🖤';
-  // Brown check
   if (h >= 15 && h < 45 && s < 0.55 && l < 0.50) return '🤎';
   if (h < 15 || h >= 345) return l > 0.65 ? '🩷' : '❤️';
   if (h < 48) return '🧡';
@@ -374,7 +432,6 @@ function getEmoji(h, s, l) {
   return '❤️';
 }
 
-// Auto-start if camera API available
 if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
   // Show permission screen, user taps allow
 } else {
@@ -383,6 +440,10 @@ if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
   errScreen.style.display = 'flex';
   document.getElementById('error-msg').textContent = 'Your browser does not support camera access. Try Chrome on Android.';
 }
+</script>
+
+<script>
+const PAINTS=[[75.9,-2.7,27.7,"#c9bb88","Green beige","RAL"],[73.2,3.7,26.8,"#ccb083","Beige","RAL"],[71.4,4.9,36.1,"#cdaa6d","Sand yellow","RAL"],[74.4,16.3,77.8,"#f2a900","Signal yellow","RAL"],[69.6,12.6,73.5,"#dd9f00","Golden yellow","RAL"],[62.9,10.6,67.7,"#c58f00","Honey yellow","RAL"],[66,19.2,71,"#db9100","Maize yellow","RAL"],[65.9,24.4,71.4,"#e28d00","Daffodil yellow","RAL"],[57,10.2,33.2,"#ab814f","Brown beige","RAL"],[73.2,1.1,69.2,"#d6b025","Lemon yellow","RAL"],[87.1,-0.8,10.2,"#e1dac7","Oyster white","RAL"],[80.2,0.6,24.2,"#d9c59a","Ivory","RAL"],[85.1,0.8,16.9,"#e3d3b5","Light ivory","RAL"],[86.8,-14.2,77.2,"#e8de35","Sulphur yellow","RAL"],[74.7,17.2,55.3,"#f0aa50","Saffron yellow","RAL"],[82.8,-0.6,76,"#f2cb2e","Zinc yellow","RAL"],[60.5,3.7,13.8,"#a28f7a","Grey beige","RAL"],[59.7,-1.2,24.3,"#9d8f65","Olive yellow","RAL"],[77.3,7.3,79.6,"#eeb700","Rape yellow","RAL"],[77.4,7.7,79.8,"#efb700","Traffic yellow","RAL"],[61.9,5.8,41.4,"#b5904b","Ochre yellow","RAL"],[97.1,-21.6,94.5,"#ffff00","Luminous yellow","RAL"],[55.2,3.2,58.5,"#a2800c","Curry","RAL"],[72.9,28.6,77.7,"#ff9c00","Melon yellow","RAL"],[70.6,9,74.1,"#dba400","Broom yellow","RAL"],[71.3,24.4,71.6,"#f39b1b","Dahlia yellow","RAL"],[70.5,20,49.8,"#e69d51","Pastel yellow","RAL"],[55.2,0.9,11.8,"#8e8370","Pearl beige","RAL"],[44.3,4.3,25.1,"#7d653f","Pearl gold","RAL"],[68.3,24.6,73.4,"#ea9300","Sun yellow","RAL"],[57.6,34.7,65.3,"#d56f00","Yellow orange","RAL"],[45.2,42.5,46.6,"#b6481c","Red orange","RAL"],[43.7,51.7,42.3,"#bc3823","Vermilion","RAL"],[63.6,42,60.9,"#f17829","Pastel orange","RAL"],[53.7,51.7,62.5,"#de5306","Pure orange","RAL"],[58.4,65.9,65.8,"#ff4b11","Luminous orange","RAL"],[79.1,14.5,81.7,"#ffb700","Luminous bright orange","RAL"],[59.7,44.7,59.7,"#e86b22","Bright red orange","RAL"],[53.1,50.3,61,"#da530a","Traffic orange","RAL"],[52.8,41.1,49,"#cc5d29","Signal orange","RAL"],[58.6,38.6,63.7,"#dd6e0f","Deep orange","RAL"],[55.5,40.8,33,"#d1654e","Salmon orange","RAL"],[36.8,32.7,31,"#8f3e26","Pearl orange","RAL"],[59.2,61.1,69.4,"#fc5500","RAL orange","RAL"],[37,49.7,35.1,"#a42821","Flame red","RAL"],[34,47.7,30.1,"#982323","Signal red","RAL"],[33.8,48,30.5,"#982222","Carmine red","RAL"],[28.7,44.6,23.6,"#841922","Ruby red","RAL"],[23.4,35,15.1,"#691b23","Purple red","RAL"],[19.3,29.9,11.9,"#58181f","Wine red","RAL"],[16.2,14.3,4.7,"#3d2022","Black red","RAL"],[27,23.5,15.7,"#663029","Oxide red","RAL"],[27.6,36.2,20.4,"#772424","Brown red","RAL"],[61.1,20.5,22.4,"#c2856d","Beige red","RAL"],[35,42.5,29.8,"#952e25","Tomato red","RAL"],[58,34,13.8,"#c97375","Antique pink","RAL"],[71.1,21.3,4.9,"#d7a0a6","Light pink","RAL"],[40.1,42.2,30,"#a43c30","Coral red","RAL"],[51.2,47,18.4,"#c8545d","Rose","RAL"],[46.5,53.8,23.6,"#c43e4a","Strawberry red","RAL"],[39.8,58.6,46.3,"#b81d13","Traffic red","RAL"],[55.7,37.4,29.1,"#cc6955","Salmon pink","RAL"],[55.1,75.5,56.8,"#ff2a24","Luminous red","RAL"],[54.8,76.2,58.3,"#ff2620","Luminous bright red","RAL"],[38.1,53.3,19.7,"#a9263d","Raspberry red","RAL"],[44.6,60.3,42.5,"#c92b26","Pure red","RAL"],[38.8,46.6,23.5,"#a43338","Orient red","RAL"],[24.6,36.4,16.1,"#6e1c24","Pearl ruby red","RAL"],[39.2,42.8,30,"#a2392e","Pearl pink","RAL"],[45.4,20.5,-13.9,"#836083","Red lilac","RAL"],[36.6,35.5,7.8,"#8c3c4b","Red violet","RAL"],[54,44.9,-5.5,"#c4608c","Heather violet","RAL"],[23.3,34.4,-0.3,"#641d39","Claret violet","RAL"],[47.3,18.8,-24.8,"#7b679a","Blue lilac","RAL"],[36.7,48,-17.3,"#913073","Traffic purple","RAL"],[19.8,20.5,-8.2,"#47243c","Purple violet","RAL"],[40.9,34.1,-20.7,"#874b83","Signal violet","RAL"],[58.1,11.4,-3.6,"#9d8592","Pastel violet","RAL"],[46.1,55,-4.8,"#bb3e77","Telemagenta","RAL"],[44.2,13.9,-18.3,"#716287","Pearl violet","RAL"],[46,5.1,-10.8,"#6d6b7f","Pearl blackberry","RAL"],[32.8,1.5,-21.6,"#384e6f","Violet blue","RAL"],[30.3,-7.4,-18.7,"#1d4c64","Green blue","RAL"],[24.8,16.8,-42,"#1e367b","Ultramarine blue","RAL"],[23.3,2.3,-19.8,"#263855","Sapphire blue","RAL"],[11.3,1.1,-7.4,"#1a1e28","Black blue","RAL"],[33.2,0.6,-36,"#005187","Signal blue","RAL"],[43.3,-3.8,-23,"#426a8c","Brilliant blue","RAL"],[23.7,-2.5,-7.9,"#2d3a44","Grey blue","RAL"],[37.7,-8.1,-19.6,"#2d5e78","Azure blue","RAL"],[31.6,-2.1,-31.8,"#004e7c","Gentian blue","RAL"],[17.2,0.4,-13.2,"#1e2b3d","Steel blue","RAL"],[53.6,-10.7,-31.7,"#2e88b6","Light blue","RAL"],[20.4,6,-23.1,"#223053","Cobalt blue","RAL"],[51.3,-0.9,-16.4,"#687c96","Pigeon blue","RAL"],[48.7,-8.4,-35.9,"#0b7bb0","Sky blue","RAL"],[36.4,-3.1,-34,"#005a8c","Traffic blue","RAL"],[52.5,-28.6,-9.1,"#1b8b8c","Turquoise blue","RAL"],[37.1,-7.3,-28,"#0f5d84","Capri blue","RAL"],[24.6,-14.2,-11.3,"#00414b","Ocean blue","RAL"],[44.3,-26.4,-9,"#007577","Water blue","RAL"],[20.3,13.8,-27.9,"#2b2c5a","Night blue","RAL"],[43.2,-0.3,-23.8,"#4a688d","Distant blue","RAL"],[58.4,-7.8,-18.3,"#6792ac","Pastel blue","RAL"],[41.4,-13.4,-16.4,"#2c697c","Pearl gentian blue","RAL"],[19.5,4.7,-23.8,"#1b2f52","Pearl night blue","RAL"],[44.6,-24,5.3,"#3b7460","Patina green","RAL"],[39.2,-30.2,23.8,"#316834","Emerald green","RAL"],[34,-26.9,24.5,"#2d5a27","Leaf green","RAL"],[34.2,-6.7,13.4,"#4e533b","Olive green","RAL"],[25.5,-18.3,-4,"#084442","Blue green","RAL"],[24.5,-20.8,5,"#114232","Moss green","RAL"],[23.8,-1.4,7.2,"#3b392e","Grey olive","RAL"],[19.6,-7.1,9.1,"#2a3222","Bottle green","RAL"],[21.6,-1.2,6.7,"#36342a","Brown green","RAL"],[21,-9.2,5.6,"#27362a","Fir green","RAL"],[42.8,-25,26.2,"#486f38","Grass green","RAL"],[49.9,-14.5,17.8,"#697d58","Reseda green","RAL"],[24.5,-6.1,0.1,"#303d3a","Black green","RAL"],[49.3,-3.4,16,"#7a765a","Reed green","RAL"],[27.7,-0.2,8.1,"#464135","Yellow olive","RAL"],[25.5,-1.9,4.2,"#3c3d36","Black olive","RAL"],[39.3,-34.3,9.6,"#006a4c","Turquoise green","RAL"],[49.1,-28.3,30.3,"#53803f","May green","RAL"],[57.6,-38.8,43.3,"#599a39","Yellow green","RAL"],[80.3,-14,14.3,"#b7ceac","Pastel green","RAL"],[26.4,-9.1,10,"#36422f","Chrome green","RAL"],[61.3,-13.4,16.2,"#879a77","Pale green","RAL"],[21.5,0.4,8.6,"#393327","Olive drab","RAL"],[48.4,-43.8,19.6,"#008450","Traffic green","RAL"],[43.7,-16.9,26,"#5a6e3b","Fern green","RAL"],[35.5,-28.8,2.9,"#005f4e","Opal green","RAL"],[71.6,-19.8,-3.5,"#80bab5","Light green","RAL"],[32.6,-17.7,6.5,"#305442","Pine green","RAL"],[41.1,-40.4,21.4,"#00703c","Mint green","RAL"],[47.3,-39.5,17.7,"#1c8051","Signal green","RAL"],[52.1,-22.4,-2,"#48877f","Mint turquoise","RAL"],[67.4,-16.4,-4.7,"#7cadac","Pastel turquoise","RAL"],[28.3,-28.9,19,"#134d24","Pearl green","RAL"],[33,-25.7,1.2,"#07584b","Pearl opal green","RAL"],[50.6,-52.9,42.9,"#008c27","Pure green","RAL"],[64.6,-66.4,62.2,"#00b612","Luminous green","RAL"],[75.6,-23.5,62.1,"#b2c43e","Fibrous green","RAL"],[55.9,-3.4,-4.8,"#7b888e","Squirrel grey","RAL"],[61.7,-1.4,-4.7,"#8e969d","Silver grey","RAL"],[50.5,-1,12.5,"#7f7863","Olive grey","RAL"],[49.7,-2.3,7.8,"#787769","Moss grey","RAL"],[64,0,0,"#9b9b9b","Signal grey","RAL"],[46.1,-1.8,1.3,"#6b6e6b","Mouse grey","RAL"],[45.5,2.2,8.3,"#756a5e","Beige grey","RAL"],[41.4,2.5,22.9,"#725f3c","Khaki grey","RAL"],[40.2,-3.2,4,"#5c6058","Green grey","RAL"],[38.6,-2.8,2.9,"#585c56","Tarpaulin grey","RAL"],[37.4,-1.5,-3.1,"#53595d","Iron grey","RAL"],[39.1,-1.7,-1.3,"#585d5e","Basalt grey","RAL"],[34.3,0.2,8,"#565044","Brown grey","RAL"],[35.2,0.2,-3.9,"#505359","Slate grey","RAL"],[25.8,-1.5,-3.3,"#383e42","Anthracite grey","RAL"],[20.7,-0.4,-1.6,"#303234","Black grey","RAL"],[31.5,-0.4,3.9,"#4c4a44","Umbra grey","RAL"],[53.2,-2.3,5.3,"#7f8076","Concrete grey","RAL"],[31,0.2,-4,"#46494f","Graphite grey","RAL"],[27.5,-4,-2.7,"#384345","Granite grey","RAL"],[59,-0.6,5.2,"#918e85","Stone grey","RAL"],[43.3,-3,-4.2,"#5d686d","Blue grey","RAL"],[71.8,-1.2,8.2,"#b4b0a1","Pebble grey","RAL"],[53.7,-4.2,7.1,"#7e8274","Cement grey","RAL"],[56.8,-1.3,14.5,"#90886f","Yellow grey","RAL"],[80,-1.2,1.2,"#c5c7c4","Light grey","RAL"],[61.2,1.3,1,"#979392","Platinum grey","RAL"],[51.5,-0.6,0.4,"#7a7b7a","Dusty grey","RAL"],[71.8,-2.2,3.8,"#afb1a9","Agate grey","RAL"],[43.3,0,5.1,"#6a665e","Quartz grey","RAL"],[64.7,-1.5,-2.3,"#989ea1","Window grey","RAL"],[60.2,-1.6,0,"#8e9291","Traffic grey A","RAL"],[34.6,-1.6,0.7,"#4f5250","Traffic grey B","RAL"],[72.9,-0.9,6,"#b6b3a8","Silk grey","RAL"],[60.3,-0.8,-2.1,"#8e9295","Telegrey 1","RAL"],[55.5,-1.7,-3,"#7f868a","Telegrey 2","RAL"],[80.6,-0.2,0.5,"#c8c8c7","Telegrey 4","RAL"],[51.8,0.4,5,"#807b73","Pearl mouse grey","RAL"],[46.6,5.4,28.8,"#866a3e","Green brown","RAL"],[46.8,16.6,39.7,"#99632b","Ochre brown","RAL"],[37.1,15.9,16.2,"#774d3e","Signal brown","RAL"],[36.9,17.2,29.7,"#7c4b27","Clay brown","RAL"],[38.5,25.3,26.4,"#8a4931","Copper brown","RAL"],[33.6,13.6,23,"#6d462b","Fawn brown","RAL"],[34.8,11.6,28,"#6f4a25","Olive brown","RAL"],[26.9,12.1,16.4,"#583827","Nut brown","RAL"],[27.4,21.1,14.9,"#64332b","Red brown","RAL"],[23.9,6.2,12.7,"#483526","Sepia brown","RAL"],[25.3,20,14.5,"#5d2f27","Chestnut brown","RAL"],[21.3,13.5,13.4,"#4b2b20","Mahogany brown","RAL"],[21.5,8.2,7.4,"#432f29","Chocolate brown","RAL"],[23.3,2.9,1.7,"#3d3635","Grey brown","RAL"],[8.2,2,-0.9,"#1a1719","Black brown","RAL"],[44.9,26.4,38.9,"#a05729","Orange brown","RAL"],[37.6,13,20.5,"#765038","Beige brown","RAL"],[39.7,8.6,14.1,"#735847","Pale brown","RAL"],[26.3,6.9,13.5,"#4f3a2a","Terra brown","RAL"],[34.5,24.9,21,"#7d4031","Pearl copper","RAL"],[89.6,-0.5,8,"#e7e1d2","Cream","RAL"],[85.1,-1.4,5,"#d6d5cb","Grey white","RAL"],[93.3,-0.9,2.4,"#ecece7","Signal white","RAL"],[17.6,0.2,-0.7,"#2b2b2c","Signal black","RAL"],[4,0.4,-1,"#0e0e10","Jet black","RAL"],[66.2,-0.2,0.5,"#a1a1a0","White aluminium","RAL"],[55.5,-0.4,2.3,"#868581","Grey aluminium","RAL"],[93.7,-1,6.2,"#f0ede1","Pure white","RAL"],[16.5,-0.4,-1.6,"#27292b","Graphite black","RAL"],[95.5,-0.8,8.9,"#f8f2e1","Clean room white","RAL"],[94.9,-1.6,3.2,"#f0f1ea","Traffic white","RAL"],[16.7,0.7,-0.5,"#2a292a","Traffic black","RAL"],[81.2,-2.6,3,"#c7cbc4","Papyrus white","RAL"],[55.5,-0.4,1.1,"#858583","Pearl light grey","RAL"],[51.5,-0.7,-0.3,"#797b7b","Pearl dark grey","RAL"],[76.3,-13.1,46.9,"#c1c163","Acid drop","F&B"],[97.8,-0.7,1.9,"#f9f9f5","All white","F&B"],[84.6,0,3.3,"#d6d3cd","Ammonite","F&B"],[75.4,-9.3,0.3,"#a7bfb9","Ancona blue","F&B"],[81.5,2.6,13.8,"#dac8b1","Archive","F&B"],[69.6,-19.9,8,"#88b49b","Arsenic","F&B"],[74.1,-2.8,11.6,"#bab7a1","Ash grey","F&B"],[79.2,5.7,49.3,"#eabe67","Babouche","F&B"],[72.8,-2.8,17.3,"#bab393","Ball green","F&B"],[67.1,-10,-2.2,"#8da9a7","Ballroom blue","F&B"],[44.3,29.1,22.4,"#9e5445","Bamboozle","F&B"],[42.8,-5.8,18.7,"#676746","Bancha","F&B"],[50.6,-4.6,-4.1,"#6c7b7f","Barrow blue","F&B"],[68,-6.5,-20.9,"#80abcb","Bay area blue","F&B"],[38.3,-1.4,-1.1,"#575b5c","Beetle black","F&B"],[54.5,-6,-18.5,"#6187a2","Belvedere blue","F&B"],[59.2,-7.8,-4.4,"#7b9396","Berrington blue","F&B"],[36.9,-9.7,8.5,"#4c5b49","Beverly","F&B"],[29.5,4,-8.8,"#454453","Bible black","F&B"],[68.7,2,22,"#baa580","Biscuit","F&B"],[60.3,37.5,28.7,"#da7561","Bisque","F&B"],[27.7,-1.2,-1.8,"#3e4244","Black blue","F&B"],[88.7,-0.7,1.9,"#dfdfdb","Blackened","F&B"],[83.3,-3.2,4.5,"#cdd1c7","Blanc de Chine","F&B"],[86.5,-0.3,8.7,"#dfd8c8","Blanc de Treillage","F&B"],[45.8,36.6,21.9,"#ac514a","Blazer","F&B"],[73.6,20,15.2,"#e2a79a","Blooth pink","F&B"],[73.9,-3.6,7.9,"#b5b7a7","Blue gray","F&B"],[78.6,-11.5,-3.3,"#a7c9c8","Blue ground","F&B"],[79.3,-0.5,12.2,"#cdc4ae","Bone","F&B"],[50,21.9,18.3,"#a36859","Book room red","F&B"],[88.2,-2.9,0.6,"#d8dfdc","Borrowed light","F&B"],[64.1,0.5,-25.3,"#809dc8","Bothy blue","F&B"],[55.2,4.2,-2.2,"#8a8288","Brassica","F&B"],[65.7,-11.5,13.1,"#94a588","Breakfast room green","F&B"],[31,10.8,0.8,"#5a4348","Brinjal","F&B"],[49.1,1.8,12.4,"#807360","Broccoli brown","F&B"],[65.7,4.1,17.8,"#b39c80","Buff","F&B"],[88.9,-8.8,40.6,"#eae291","Butterweed","F&B"],[93.3,-2.3,0.3,"#e7edeb","Cabbage white","F&B"],[31.7,-5.4,2.2,"#434d47","Caggiage green","F&B"],[86.9,5.4,4.7,"#e8d6d1","Calamine","F&B"],[54,-10.9,13.3,"#77866a","Calke green","F&B"],[80.4,0.9,-2.5,"#c7c7cc","Calluna","F&B"],[68.9,8.7,33.9,"#cba16b","Cane","F&B"],[58.8,-5.4,7.1,"#899081","Card room green","F&B"],[60.8,-7,4.7,"#89968a","Castle gray","F&B"],[71.3,2.2,22.5,"#c2ac86","Cat's paw","F&B"],[65.5,-10.2,5.9,"#90a494","Chappell green","F&B"],[59.2,1.7,6,"#968d84","Charleston gray","F&B"],[51.3,36.8,36.8,"#c05e3d","Charlotte's locks","F&B"],[59.8,1,5.7,"#968f86","Chemise","F&B"],[33.4,-5,0.3,"#46514e","Chine green","F&B"],[59.2,-8.8,-13.2,"#6e94a5","Chinese blue","F&B"],[76.2,-4.7,28.6,"#c7bd87","Churlish green","F&B"],[79.5,1.3,37.4,"#dfc27f","Ciara yellow","F&B"],[68.6,10.2,1.4,"#bba1a5","Cinder rose","F&B"],[83.4,2.3,41.7,"#eecc81","Citron","F&B"],[80.8,-4.8,41.5,"#dac97a","Citrona","F&B"],[87.9,-0.5,9.2,"#e3dccb","Clunch","F&B"],[27.8,4.6,3.8,"#4b3f3c","Cola","F&B"],[78.1,-5.2,16.7,"#c4c3a2","Cooking apple green","F&B"],[59.7,-4.8,-20.3,"#6f94b3","Cooks blue","F&B"],[49.8,39.3,29.2,"#bd5847","Copenhagen roof","F&B"],[41.2,-9.1,-4.9,"#4b6669","Coppice blue","F&B"],[78.3,0.5,19.8,"#d1c09d","Cord","F&B"],[83.3,0.3,4.6,"#d4cfc7","Cornforth white","F&B"],[77.4,2.7,44.8,"#debb6b","Corngold","F&B"],[82.4,1.1,22,"#dfcba4","Cream","F&B"],[53.8,19.3,7.7,"#a57474","Crimson red","F&B"],[81.6,-2.7,6.3,"#cbccbf","Cromarty","F&B"],[47.3,-31.7,22.4,"#407d49","Danish lawn","F&B"],[54.1,2.7,14.9,"#907f68","Dauphin","F&B"],[88.2,-1.2,33.3,"#f2dc9e","Day room yellow","F&B"],[53.5,-4,-2.6,"#768284","De Nimes","F&B"],[65.4,5.3,10.7,"#b09b8c","Dead salmon","F&B"],[32.7,14.6,10.6,"#68443d","Deep reddish brown","F&B"],[50,-2.1,16.4,"#7e775b","Dibber","F&B"],[90.2,0.5,8.4,"#ebe2d3","Dimity","F&B"],[84.5,-0.5,1.5,"#d3d3d0","Dimpse","F&B"],[39.1,2,-23.4,"#465d82","Dinnerware","F&B"],[70.4,-9.1,0.4,"#9ab1ab","Dix blue","F&B"],[84.3,2.9,25.9,"#eacfa2","Dorset cream","F&B"],[80.6,2.9,20,"#dcc5a3","Double cream","F&B"],[70.8,1.4,4,"#b3aca6","Dove tale","F&B"],[42.8,-1.8,0,"#626665","Down pipe","F&B"],[57.5,1.7,16.7,"#98886d","Drab","F&B"],[34.8,2.8,-19.6,"#435271","Drawing room blue","F&B"],[76.8,-0.4,10.6,"#c5bdaa","Drop cloth","F&B"],[32.7,-10.1,8,"#415140","Duck green","F&B"],[70.2,16.9,57.1,"#e29e40","Dutch orange","F&B"],[73.5,8,25.1,"#d3ae87","Dutch pink","F&B"],[46.1,-8.8,8.9,"#64715e","Dyrehaven","F&B"],[40,23.1,9.9,"#864f4f","Eating room red","F&B"],[81.1,-3.7,8.2,"#c9cbba","Eddy","F&B"],[79.3,1.4,7.3,"#cdc3b7","Elephant's breath","F&B"],[62.3,-25.4,21.8,"#75a26f","Emerald green","F&B"],[67.7,9.4,20.9,"#c39e80","Entrance hall pink","F&B"],[39.7,16.5,13.8,"#7e5348","Etruscan red","F&B"],[76.3,9.4,22.1,"#dcb594","Faded terracotta","F&B"],[71,10.6,22.3,"#cfa686","Fake tan","F&B"],[85.7,1.4,20.3,"#e8d4b0","Farrow's cream","F&B"],[90.6,-0.9,7.9,"#e9e4d5","Farrow's white","F&B"],[76.9,-0.4,14.5,"#c8bda3","Fawn","F&B"],[66.3,-14.7,15.5,"#91a885","Folly green","F&B"],[60.5,18.2,23.1,"#bd856a","Folly pink","F&B"],[71.3,13,23.2,"#d4a585","Fowler pink","F&B"],[53.1,18.5,21.4,"#a8725b","Fox red","F&B"],[71.9,-2.9,12.2,"#b4b19a","French gray","F&B"],[60.7,22.5,13.9,"#c0837b","Fruit fool","F&B"],[81.2,-2.2,31.8,"#dbc98e","Gervase yellow","F&B"],[28.1,0.4,1.5,"#444240","Grate black","F&B"],[82.9,-0.8,-13.8,"#bfd0e8","Graupel","F&B"],[89.8,0.8,3,"#e6e1dc","Great white","F&B"],[75.2,-7.4,4.3,"#aebdb1","Green blue","F&B"],[85.8,-4.6,17.2,"#dbd8b6","Green ground","F&B"],[50.5,-6,4.7,"#717b70","Green smoke","F&B"],[64.2,-2.5,18.4,"#a49c7b","Green stone","F&B"],[36.2,-6.2,1.2,"#4b5853","Grove green","F&B"],[32.1,-4.2,-6.8,"#3e4e56","Hague blue","F&B"],[72.2,-1,8.8,"#b6b1a1","Hardwick white","F&B"],[44.7,34.4,26.2,"#a75040","Harissa","F&B"],[79,1.5,25.7,"#d8c194","Hay","F&B"],[77.6,-5.2,-5.2,"#b0c3c9","Hazy","F&B"],[35.3,-1.8,-1.3,"#4f5455","Hopper head","F&B"],[84.7,-2,25.2,"#e2d3a4","Hound lemon","F&B"],[90.7,-1.3,15.4,"#eee4c7","House white","F&B"],[35.2,5.4,-14,"#505169","Imperial purple","F&B"],[39.3,34.9,14.4,"#954347","Incarnadine","F&B"],[41,-6.5,-2.8,"#526465","Inchyra Blue","F&B"],[65,7.9,38.2,"#c09759","India yellow","F&B"],[90.7,-2.1,6.9,"#e6e5d7","James white","F&B"],[73.2,1.6,10.9,"#bfb2a0","Jitney","F&B"],[83.6,1.1,12,"#dccfba","Joa's white","F&B"],[69.3,-3.8,-8.9,"#99acb9","Kittiwake","F&B"],[46.9,45.1,6,"#b54c67","Lake red","F&B"],[73.9,-1.1,4.2,"#b7b6ae","Lamp room gray","F&B"],[91.9,-4.9,24.8,"#f1e9b8","Lancaster yellow","F&B"],[64.8,-4.6,12.4,"#9e9f87","Lichen","F&B"],[75.8,-2.7,3,"#b8bcb5","Light blue","F&B"],[69.2,0.2,11.6,"#b2a894","Light gray","F&B"],[86.2,-0.5,13.1,"#e1d7bf","Light sand","F&B"],[77.3,-0.3,18.5,"#ccbe9d","Light stone","F&B"],[89.3,-0.8,11.2,"#e8e0cb","Lime white","F&B"],[52.1,22.2,20.1,"#aa6d5b","Loggia","F&B"],[44.2,3.9,5.8,"#73665f","London clay","F&B"],[66.3,2.5,12.6,"#af9f8b","London stone","F&B"],[73.6,-4.3,-10.1,"#a2b8c7","Lulworth blue","F&B"],[31.4,3.4,2.6,"#514846","Mahogany","F&B"],[64.6,-0.9,1.4,"#9c9d9a","Manor house gray","F&B"],[86.8,0.6,14.6,"#e6d8be","Matchstick","F&B"],[64.9,17.4,24.3,"#c99173","Menagerie","F&B"],[45.1,-14.8,-3.4,"#497270","Mere Green","F&B"],[81,-7.1,2.6,"#bdcdc4","Middle ground","F&B"],[92.4,4.9,2.3,"#f5e6e5","Middleton pink","F&B"],[41.2,-8.9,9.1,"#586552","Minster green","F&B"],[76.8,-3.2,6.8,"#bdbfb1","Mizzle","F&B"],[54.4,-0.2,3,"#84827d","Mole's breath","F&B"],[36.5,-6.6,1.1,"#4b5954","Monkey puzzle","F&B"],[75.3,6.8,22.3,"#d5b491","Mortar pink","F&B"],[57.7,1.5,12.5,"#968975","Mouse's back","F&B"],[78.8,15.2,5.2,"#e3b9ba","Nancy's blushes","F&B"],[70.9,16.1,21.7,"#d7a287","Naperon","F&B"],[92.6,-0.3,13.5,"#f4e9d0","New white","F&B"],[72.8,4.5,35.3,"#d0ae72","Octagon yellow","F&B"],[85.9,-0.2,12.1,"#e0d6c0","Off white","F&B"],[29.1,-0.5,-2.2,"#424548","Off-black","F&B"],[66.8,13.5,20.8,"#c7997e","Ointment pink","F&B"],[79.1,-0.2,12.3,"#cdc3ad","Old white","F&B"],[57.3,-4.3,15.8,"#8d8b6e","Olive","F&B"],[85.4,0.3,17.2,"#e3d4b5","Orange coloured white","F&B"],[74.5,9.4,41.3,"#dfaf6b","Orangery","F&B"],[63.3,-6.8,-1.1,"#8b9d9b","Oval room blue","F&B"],[77.6,1.6,11.9,"#ccbeaa","Oxford stone","F&B"],[28.4,2.4,-2.6,"#454247","Paean black","F&B"],[87.5,-3.2,19.2,"#e4dcb7","Pale hound","F&B"],[88.9,-3.5,5.4,"#dde1d5","Pale powder","F&B"],[82,-8.2,8.9,"#c3d0bb","Palm","F&B"],[42.7,0.3,10.2,"#6c6454","Pantalon","F&B"],[76.6,-4.7,-2.8,"#b1c0c2","Parma gray","F&B"],[77.3,-0.6,2.6,"#c0bfba","Pavilion gray","F&B"],[91,-3.8,4.2,"#e1e7dd","Pavillion blue","F&B"],[60.3,-12.6,13.6,"#849779","Pea green","F&B"],[80.1,2.4,3.1,"#cec5c1","Peignoir","F&B"],[30.7,6.7,-4.3,"#50454f","Pelt","F&B"],[45.1,23.2,17.4,"#975b4f","Picture gallery red","F&B"],[65.8,-2.9,6,"#9fa195","Pigeon","F&B"],[80,11.7,15.6,"#e7beaa","Pink cup","F&B"],[75.2,6.2,6.8,"#cab5ad","Pink drab","F&B"],[87.6,4.6,9.4,"#ecd8ca","Pink ground","F&B"],[25.3,0.2,-0.6,"#3c3c3d","Pitch black","F&B"],[46.7,1.9,-18.9,"#5f6f8e","Pitch blue","F&B"],[66.7,3.6,16.4,"#b49f85","Planter","F&B"],[58.8,-1.1,0.8,"#8c8e8c","Plummett","F&B"],[94.7,-1,6.1,"#f3f0e4","Pointing","F&B"],[70.2,-8.2,4.1,"#9fb0a4","Pond green","F&B"],[56.2,20.1,16.5,"#b1796b","Porphyry pink","F&B"],[78,6.4,12.5,"#d6bcaa","Potted shrimp","F&B"],[74.3,-8.1,1.8,"#a8bbb3","Powder blue","F&B"],[32.6,17.7,4,"#694247","Preference red","F&B"],[76.2,4.7,37.3,"#dbb777","Print room yellow","F&B"],[76.3,-0.2,5,"#c0bcb3","Purbeck stone","F&B"],[39.6,29.6,8.4,"#8d4951","Radicchio","F&B"],[29.9,-0.9,-2.4,"#43474a","Railings","F&B"],[57.2,22.6,-0.5,"#af7b8b","Rangwali","F&B"],[40.1,36.8,12.4,"#99434c","Rectory red","F&B"],[57.8,22.8,20.1,"#bb7b69","Red earth","F&B"],[88.2,0.3,14.4,"#e9dcc2","Ringwold ground","F&B"],[42.6,1.7,10.1,"#6e6354","Salon drab","F&B"],[90.7,0.1,1.7,"#e6e4e1","Salt","F&B"],[63.1,8.6,28.2,"#b89267","Sand","F&B"],[50.4,-10.6,22.5,"#747c51","Sap green","F&B"],[80.1,1,16.6,"#d5c5a8","Savage ground","F&B"],[66.1,-11.8,18.1,"#98a680","Saxon green","F&B"],[88.8,-0.9,7.9,"#e4dfd0","School house white","F&B"],[57,-5.3,-4.9,"#7a8c91","Selvedge","F&B"],[32.4,3,-17.1,"#414c67","Serge","F&B"],[80.1,6,12.3,"#dbc2b0","Setting plaster","F&B"],[85,-0.7,8.6,"#dad4c4","Shaded white","F&B"],[80.8,-1.6,7.9,"#ccc9ba","Shadow gray","F&B"],[86,-1,8.5,"#dcd7c7","Shadow white","F&B"],[87.3,-1.5,44.2,"#f4d986","Sherbert lemon","F&B"],[44.2,24,19.1,"#96584a","Singed red","F&B"],[83.7,1.3,13.8,"#decfb7","Single cream","F&B"],[90.8,-2.1,-2.4,"#dee6e9","Sizing","F&B"],[81.2,-2,11.6,"#cfcab4","Skimmed milk white","F&B"],[84.8,0.7,5.8,"#dad3c9","Skimming stone","F&B"],[81.5,-3,1.8,"#c6ccc7","Skylight","F&B"],[89.9,-1,8.4,"#e7e2d2","Slipper satin","F&B"],[49.1,-7.6,-8.8,"#5d7983","Sloe blue","F&B"],[25.3,0,0,"#3c3c3c","Smelt black","F&B"],[69.5,5,12.8,"#bca693","Smoked trout","F&B"],[92.4,-0.7,8.5,"#efe9d9","Snow white","F&B"],[62.6,-12.7,-23.8,"#5aa0c1","St Giles blue","F&B"],[38,-3.9,-10.5,"#485c6a","Stiffkey blue","F&B"],[83.6,1.1,8.2,"#d9cfc1","Stirabout","F&B"],[59.7,-1,3.8,"#919089","Stoke","F&B"],[60.7,-9.7,-7.4,"#77989f","Stone blue","F&B"],[69.7,-3.3,16.1,"#b0ab8d","Stone white","F&B"],[78.8,0.4,11.9,"#cdc2ad","Stoney ground","F&B"],[75.4,4.7,33.1,"#d7b57d","Straw","F&B"],[83.2,0.1,16.7,"#dcceb0","String","F&B"],[91.5,-1.1,5.1,"#e9e7dd","Strong white","F&B"],[32.1,-3.1,0.9,"#474d4a","Studio green","F&B"],[75.3,5.3,37,"#d9b475","Sudbury yellow","F&B"],[62,-11.6,13.2,"#8a9b7e","Suffield green","F&B"],[62.3,-12.1,-1.1,"#7d9d98","Sugar bag light","F&B"],[79.3,7.6,-4.6,"#cfc0cd","Sugared almond","F&B"],[61.5,8.6,7.3,"#a98f88","Sulking room pink","F&B"],[60.3,-10.6,15.4,"#899676","Sutcliffe green","F&B"],[54.8,6.9,18.2,"#9a7e64","Tack room door","F&B"],[93,-0.2,13,"#f5ead2","Tallow","F&B"],[31,1.7,0.6,"#4c4848","Tanner's brown","F&B"],[34.9,0.2,-0.6,"#525253","Tar","F&B"],[92.4,2.7,6.4,"#f4e7dd","Taylor tack","F&B"],[85.8,1.7,23.7,"#ebd4aa","Templa white","F&B"],[73.6,6.5,14.3,"#cbb09b","Templeton pink","F&B"],[81.8,-6.8,4.9,"#c2cfc2","Teresa's green","F&B"],[44.8,28.5,19.6,"#9e564b","Terre d'Egypte","F&B"],[26.3,3.4,-8.5,"#3d3d4b","Titmouse blue","F&B"],[58,-4.2,11.1,"#8c8d78","Treron","F&B"],[90.4,-3.7,11.8,"#e6e5cd","Tunsgate green","F&B"],[81.2,-0.4,11.6,"#d2c9b4","Turret white","F&B"],[49.8,-3.6,-21.1,"#577a9a","Ultra marine blue","F&B"],[50.4,-17.9,-6.2,"#4a8182","Vardo","F&B"],[75.5,-4.9,11.9,"#babca4","Vert de terre","F&B"],[82.6,-3.9,12.6,"#d0cfb6","Vichyssoise","F&B"],[69.4,-2,8,"#acaa9b","Vitty green","F&B"],[43.7,7.8,16.1,"#7d624d","Wainscot","F&B"],[76,-0.9,12.2,"#c3bba5","Wall white","F&B"],[61.6,13.1,31.8,"#bc8b5d","Wet sand","F&B"],[93.7,-0.5,1.4,"#ededea","Wevet","F&B"],[74.1,-10.1,11.9,"#acbba0","Whirlybird","F&B"],[91.8,-0.5,9.1,"#eee7d6","White tie","F&B"],[95.5,-0.7,5.2,"#f5f2e8","Wimborne white","F&B"],[42.2,0.3,-10.2,"#5b6474","Wine dark","F&B"],[65.9,-0.2,4,"#a3a099","Worsted","F&B"],[57.4,-9.7,-14.1,"#6690a2","Yard blue","F&B"],[63.8,-11,22.5,"#969f72","Yeabridge green","F&B"],[83.1,4.6,37.3,"#efca89","Yellow ground","F&B"],[85.4,-8.2,60.5,"#e9d75e","Yellowcake","F&B"],[71.1,-9.4,-10.7,"#8fb4c1","Yonder","F&B"]];
 </script>
 </body>
 </html>
