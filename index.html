@@ -144,7 +144,7 @@
       overflow: hidden; text-overflow: ellipsis;
     }
     .chip-brand { color: rgba(255,255,255,0.45); font-size: 10px; font-weight: 600; white-space: nowrap; }
-    .chip-arrow { color: rgba(255,255,255,0.3); font-size: 11px; flex-shrink: 0; margin-left: 2px; }
+    .chip-pct { font-size: 11px; font-weight: 800; flex-shrink: 0; margin-left: 2px; min-width: 30px; text-align: right; }
 
     #permission-screen {
       position: absolute; inset: 0; z-index: 20;
@@ -421,16 +421,19 @@ function renderPaintMatches(r, g, b) {
   lastR = r; lastG = g; lastB = b;
   const matches = findNearestPaints(r, g, b, 3);
   const el = document.getElementById('paint-matches');
-  el.innerHTML = matches.map(m => `
+  el.innerHTML = matches.map(m => {
+    const pct = Math.max(0, Math.round(100 * (1 - m.de / 35)));
+    const pctColor = pct >= 80 ? '#4ade80' : pct >= 60 ? '#fbbf24' : '#f87171';
+    return `
     <a class="paint-chip" href="${m.url}" target="_blank" rel="noopener">
       <div class="chip-swatch" style="background:${m.hex}"></div>
       <div class="chip-text">
         <div class="chip-name">${m.name}</div>
         <div class="chip-brand">${m.brand}</div>
       </div>
-      <div class="chip-arrow">↗</div>
-    </a>
-  `).join('');
+      <div class="chip-pct" style="color:${pctColor}">${pct}%</div>
+    </a>`;
+  }).join('');
 }
 
 // ---- Colour naming logic ----
@@ -459,14 +462,16 @@ function getColorInfo(r, g, b, complex) {
   const hex = rgbToHex(r, g, b);
   const [h, s, l] = rgbToHsl(r, g, b);
 
-  if (l > 0.90) return { name: 'White', hex, emoji: '🤍' };
+  if (l > 0.84) return { name: 'White', hex, emoji: '🤍' };
   if (l < 0.10) return { name: 'Black', hex, emoji: '🖤' };
 
-  if (s < 0.12) {
+  // Treat low-saturation colours as grey/white family
+  // Raised threshold to 0.22 to capture warm whites shot under incandescent light
+  if (s < 0.22) {
     if (l < 0.22) return { name: 'Black', hex, emoji: '🖤' };
-    if (l < 0.40) return { name: complex ? 'Charcoal' : 'Dark Grey', hex, emoji: '🩶' };
-    if (l < 0.60) return { name: 'Grey', hex, emoji: '🩶' };
-    if (l < 0.82) return { name: complex ? 'Silver' : 'Light Grey', hex, emoji: '🩶' };
+    if (l < 0.38) return { name: complex ? 'Charcoal' : 'Dark Grey', hex, emoji: '🩶' };
+    if (l < 0.56) return { name: 'Grey', hex, emoji: '🩶' };
+    if (l < 0.70) return { name: complex ? 'Silver' : 'Light Grey', hex, emoji: '🩶' };
     return { name: complex ? 'Off-White' : 'White', hex, emoji: '🤍' };
   }
 
