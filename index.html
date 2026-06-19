@@ -25,6 +25,13 @@
       transition: all 0.2s;
     }
     .pill.active { background: #7B61FF; color: #fff; }
+    #voice-btn {
+      width: 44px; height: 44px; border-radius: 50%; border: none;
+      background: rgba(0,0,0,0.5); color: rgba(255,255,255,0.55);
+      font-size: 20px; cursor: pointer; display: flex; align-items: center;
+      justify-content: center; transition: all 0.2s; margin-left: 10px;
+    }
+    #voice-btn.active { background: #7B61FF; color: #fff; }
 
     #crosshair {
       position: absolute; top: 50%; left: 50%; z-index: 10;
@@ -106,6 +113,7 @@
       <button class="pill active" id="simple-btn" onclick="setMode(false)">Simple</button>
       <button class="pill" id="complex-btn" onclick="setMode(true)">Complex</button>
     </div>
+    <button id="voice-btn" onclick="toggleVoice()" title="Toggle voice">🔇</button>
   </div>
 
   <div id="crosshair">
@@ -127,6 +135,30 @@
 <script>
 let complexMode = false;
 let scanning = false;
+let voiceOn = false;
+let lastSpokenName = '';
+
+function toggleVoice() {
+  voiceOn = !voiceOn;
+  const btn = document.getElementById('voice-btn');
+  btn.textContent = voiceOn ? '🔊' : '🔇';
+  btn.className = voiceOn ? 'active' : '';
+  if (voiceOn && window.speechSynthesis) {
+    // Unlock speech on iOS — must call from a user gesture
+    const u = new SpeechSynthesisUtterance('');
+    window.speechSynthesis.speak(u);
+  }
+}
+
+function speakColor(name) {
+  if (!voiceOn || !window.speechSynthesis || name === lastSpokenName) return;
+  lastSpokenName = name;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(name);
+  u.rate = 0.9;
+  u.pitch = 1.1;
+  window.speechSynthesis.speak(u);
+}
 
 function setMode(complex) {
   complexMode = complex;
@@ -188,6 +220,7 @@ function updateUI({ name, hex, emoji }) {
     nameEl.style.opacity = '1';
     document.getElementById('swatch').style.backgroundColor = hex;
     document.getElementById('color-hex').textContent = hex;
+    speakColor(name);
   }, 150);
 }
 
