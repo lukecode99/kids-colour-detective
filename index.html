@@ -71,6 +71,40 @@
     }
     #color-hex { color: rgba(255,255,255,0.55); font-size: 20px; font-weight: 600; margin-top: 2px; display: none; }
 
+    /* Brand filter */
+    #brand-filter-row {
+      padding: 8px 16px 0; display: flex; align-items: center; gap: 8px; position: relative;
+    }
+    #brand-filter-btn {
+      display: flex; align-items: center; gap: 6px;
+      background: rgba(255,255,255,0.1); border: none; border-radius: 20px;
+      color: #fff; font-size: 12px; font-weight: 700; padding: 6px 12px;
+      cursor: pointer; transition: background 0.2s;
+    }
+    #brand-filter-btn:active { background: rgba(255,255,255,0.18); }
+    #brand-count {
+      background: #7B61FF; color: #fff; border-radius: 10px;
+      font-size: 10px; font-weight: 800; padding: 1px 6px; min-width: 16px; text-align: center;
+    }
+    #brand-dropdown {
+      position: absolute; bottom: calc(100% + 6px); left: 16px;
+      background: #1a1b2e; border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px; padding: 6px; z-index: 50;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      display: none;
+    }
+    #brand-dropdown.open { display: block; }
+    .brand-option {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; cursor: pointer; border-radius: 10px;
+      color: #fff; font-size: 14px; font-weight: 600;
+      transition: background 0.15s; white-space: nowrap;
+    }
+    .brand-option:hover { background: rgba(255,255,255,0.08); }
+    .brand-option input[type=checkbox] {
+      width: 18px; height: 18px; accent-color: #7B61FF; cursor: pointer; flex-shrink: 0;
+    }
+
     /* Paint matches */
     #paint-matches {
       display: flex; gap: 8px; padding: 8px 16px 0;
@@ -153,6 +187,19 @@
       <div id="color-name">🔍 Detecting…</div>
       <div id="color-hex">#808080</div>
     </div>
+    <div id="brand-filter-row">
+      <button id="brand-filter-btn" onclick="toggleBrandDropdown()">
+        🎨 Brands <span id="brand-count">2</span>
+      </button>
+      <div id="brand-dropdown">
+        <label class="brand-option">
+          <input type="checkbox" value="RAL" checked onchange="updateBrandFilter()"> RAL Classic
+        </label>
+        <label class="brand-option">
+          <input type="checkbox" value="F&B" checked onchange="updateBrandFilter()"> Farrow &amp; Ball
+        </label>
+      </div>
+    </div>
     <div id="paint-matches"></div>
   </div>
 </div>
@@ -163,6 +210,8 @@ let scanning = false;
 let voiceOn = false;
 let lastSpokenName = '';
 const recentNames = [];
+let selectedBrands = new Set(['RAL', 'F&B']);
+let lastR = null, lastG = null, lastB = null;
 
 function toggleVoice() {
   voiceOn = !voiceOn;
@@ -265,6 +314,32 @@ function updateUI({ name, hex, emoji }, r, g, b) {
   }, 150);
 }
 
+// ---- Brand filter ----
+function toggleBrandDropdown() {
+  const dd = document.getElementById('brand-dropdown');
+  dd.classList.toggle('open');
+  document.addEventListener('click', closeBrandDropdownOutside, { once: true, capture: true });
+}
+function closeBrandDropdownOutside(e) {
+  const btn = document.getElementById('brand-filter-btn');
+  const dd = document.getElementById('brand-dropdown');
+  if (!btn.contains(e.target) && !dd.contains(e.target)) {
+    dd.classList.remove('open');
+  } else {
+    document.addEventListener('click', closeBrandDropdownOutside, { once: true, capture: true });
+  }
+}
+function updateBrandFilter() {
+  const boxes = document.querySelectorAll('#brand-dropdown input[type=checkbox]');
+  selectedBrands = new Set([...boxes].filter(b => b.checked).map(b => b.value));
+  if (selectedBrands.size === 0) {
+    boxes[0].checked = true;
+    selectedBrands.add(boxes[0].value);
+  }
+  document.getElementById('brand-count').textContent = selectedBrands.size;
+  if (lastR !== null) renderPaintMatches(lastR, lastG, lastB);
+}
+
 // ---- Paint matching ----
 function rgbToXyz(r, g, b) {
   let rr = r/255, gg = g/255, bb = b/255;
@@ -286,7 +361,8 @@ function rgbToLab(r, g, b) {
 
 function findNearestPaints(r, g, b, n) {
   const [L,A,B] = rgbToLab(r,g,b);
-  const scored = PAINTS.map(p => {
+  const pool = selectedBrands.size === 0 ? PAINTS : PAINTS.filter(p => selectedBrands.has(p[5]));
+  const scored = pool.map(p => {
     const dL=L-p[0], dA=A-p[1], dB=B-p[2];
     return { de: Math.sqrt(dL*dL+dA*dA+dB*dB), hex: p[3], name: p[4], brand: p[5] };
   });
@@ -295,6 +371,7 @@ function findNearestPaints(r, g, b, n) {
 }
 
 function renderPaintMatches(r, g, b) {
+  lastR = r; lastG = g; lastB = b;
   const matches = findNearestPaints(r, g, b, 3);
   const el = document.getElementById('paint-matches');
   el.innerHTML = matches.map(m => `
