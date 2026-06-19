@@ -1,37 +1,310 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-    <title>Colour Detective</title>
-    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
-    <style id="expo-reset">
-      /* These styles make the body full-height */
-      html,
-      body {
-        height: 100%;
-      }
-      /* These styles disable body scrolling if you are using <ScrollView> */
-      body {
-        overflow: hidden;
-      }
-      /* These styles make the root element full-height */
-      #root {
-        display: flex;
-        height: 100%;
-        flex: 1;
-      }
-    </style>
-  </head>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Colour Detective</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0D0E1A; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; height: 100dvh; }
+    #app { position: relative; width: 100%; height: 100dvh; display: flex; flex-direction: column; }
 
-  <body>
-    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
-    <noscript>
-      You need to enable JavaScript to run this app.
-    </noscript>
-    <!-- The root element for your Expo app. -->
-    <div id="root"></div>
-  <script src="./_expo/static/js/web/AppEntry-ec753ce932f3a605cde6005fbc518878.js" defer></script>
+    #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    #canvas { display: none; }
+
+    #top-overlay {
+      position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+      display: flex; justify-content: flex-end; padding: 52px 16px 12px;
+    }
+    #toggle {
+      display: flex; background: rgba(0,0,0,0.5); border-radius: 24px; padding: 4px;
+    }
+    .pill {
+      padding: 8px 18px; border-radius: 20px; border: none; background: transparent;
+      color: rgba(255,255,255,0.55); font-size: 14px; font-weight: 700; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .pill.active { background: #7B61FF; color: #fff; }
+
+    #crosshair {
+      position: absolute; top: 50%; left: 50%; z-index: 10;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+    #crosshair-circle {
+      width: 140px; height: 140px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.8);
+      position: relative;
+      animation: breathe 2s ease-in-out infinite;
+    }
+    #crosshair-h {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 20px; height: 2px; background: rgba(255,255,255,0.8); border-radius: 1px;
+    }
+    #crosshair-v {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 2px; height: 20px; background: rgba(255,255,255,0.8); border-radius: 1px;
+    }
+    @keyframes breathe {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.12); }
+    }
+
+    #bottom-panel {
+      position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+      background: rgba(13,14,26,0.88); padding-bottom: 40px;
+    }
+    #swatch { height: 8px; width: 100%; transition: background-color 0.4s ease; }
+    #color-info { padding: 16px 24px 8px; }
+    #color-name {
+      color: #fff; font-size: clamp(36px, 12vw, 52px); font-weight: 800; letter-spacing: -1px;
+      transition: opacity 0.3s;
+    }
+    #color-hex { color: rgba(255,255,255,0.55); font-size: 22px; font-weight: 600; margin-top: 2px; display: none; }
+
+    #permission-screen {
+      position: absolute; inset: 0; z-index: 20;
+      background: #0D0E1A; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: 32px; text-align: center;
+    }
+    #permission-screen h1 { color: #fff; font-size: 28px; font-weight: 800; margin-bottom: 12px; }
+    #permission-screen p { color: rgba(255,255,255,0.55); font-size: 16px; margin-bottom: 24px; }
+    #allow-btn {
+      background: #7B61FF; color: #fff; border: none; border-radius: 30px;
+      padding: 14px 32px; font-size: 16px; font-weight: 700; cursor: pointer;
+    }
+    #error-screen {
+      position: absolute; inset: 0; z-index: 20;
+      background: #0D0E1A; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: 32px; text-align: center;
+      display: none;
+    }
+    #error-screen h1 { color: #fff; font-size: 24px; font-weight: 800; margin-bottom: 12px; }
+    #error-screen p { color: rgba(255,255,255,0.55); font-size: 15px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas" width="1" height="1"></canvas>
+
+  <div id="permission-screen">
+    <h1>📷 Camera Access Needed</h1>
+    <p>Colour Detective uses your camera to detect colours around you!</p>
+    <button id="allow-btn" onclick="startCamera()">Allow Camera</button>
+  </div>
+
+  <div id="error-screen">
+    <h1>😕 Camera Unavailable</h1>
+    <p id="error-msg">Camera access was denied or is unavailable on this browser.</p>
+  </div>
+
+  <div id="top-overlay">
+    <div id="toggle">
+      <button class="pill active" id="simple-btn" onclick="setMode(false)">Simple</button>
+      <button class="pill" id="complex-btn" onclick="setMode(true)">Complex</button>
+    </div>
+  </div>
+
+  <div id="crosshair">
+    <div id="crosshair-circle">
+      <div id="crosshair-h"></div>
+      <div id="crosshair-v"></div>
+    </div>
+  </div>
+
+  <div id="bottom-panel">
+    <div id="swatch" style="background-color: #808080"></div>
+    <div id="color-info">
+      <div id="color-name">🔍 Detecting…</div>
+      <div id="color-hex">#808080</div>
+    </div>
+  </div>
+</div>
+
+<script>
+let complexMode = false;
+let scanning = false;
+
+function setMode(complex) {
+  complexMode = complex;
+  document.getElementById('simple-btn').className = 'pill' + (!complex ? ' active' : '');
+  document.getElementById('complex-btn').className = 'pill' + (complex ? ' active' : '');
+  document.getElementById('color-hex').style.display = complex ? 'block' : 'none';
+}
+
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    const video = document.getElementById('video');
+    video.srcObject = stream;
+    document.getElementById('permission-screen').style.display = 'none';
+    startScanning();
+  } catch (err) {
+    document.getElementById('permission-screen').style.display = 'none';
+    const errScreen = document.getElementById('error-screen');
+    errScreen.style.display = 'flex';
+    document.getElementById('error-msg').textContent =
+      err.name === 'NotAllowedError'
+        ? 'Camera permission was denied. Tap allow when prompted, or check your browser settings.'
+        : 'Could not access camera: ' + err.message;
+  }
+}
+
+function startScanning() {
+  setInterval(sampleColor, 1500);
+}
+
+function sampleColor() {
+  if (scanning) return;
+  scanning = true;
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  if (!video.videoWidth) { scanning = false; return; }
+
+  const ctx = canvas.getContext('2d');
+  // Sample center 15% of frame
+  const sw = Math.floor(video.videoWidth * 0.15);
+  const sh = Math.floor(video.videoHeight * 0.15);
+  const sx = Math.floor((video.videoWidth - sw) / 2);
+  const sy = Math.floor((video.videoHeight - sh) / 2);
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, 1, 1);
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+
+  const info = getColorInfo(r, g, b, complexMode);
+  updateUI(info);
+  scanning = false;
+}
+
+function updateUI({ name, hex, emoji }) {
+  const nameEl = document.getElementById('color-name');
+  nameEl.style.opacity = '0.5';
+  setTimeout(() => {
+    nameEl.textContent = emoji + ' ' + name;
+    nameEl.style.opacity = '1';
+    document.getElementById('swatch').style.backgroundColor = hex;
+    document.getElementById('color-hex').textContent = hex;
+  }, 150);
+}
+
+// ---- Colour naming logic ----
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s, l = (max + min) / 2;
+  if (max === min) { h = s = 0; }
+  else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      default: h = ((r - g) / d + 4) / 6;
+    }
+  }
+  return [h * 360, s, l];
+}
+
+function rgbToHex(r, g, b) {
+  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+function getColorInfo(r, g, b, complex) {
+  const hex = rgbToHex(r, g, b);
+  const [h, s, l] = rgbToHsl(r, g, b);
+
+  // Greyscale
+  if (s < 0.08) {
+    if (l < 0.15) return { name: 'Black', hex, emoji: '🖤' };
+    if (l < 0.35) return { name: complex ? 'Charcoal' : 'Dark Grey', hex, emoji: '🩶' };
+    if (l < 0.55) return { name: 'Grey', hex, emoji: '🩶' };
+    if (l < 0.80) return { name: complex ? 'Silver' : 'Light Grey', hex, emoji: '🩶' };
+    return { name: 'White', hex, emoji: '🤍' };
+  }
+
+  const name = complex ? getComplexName(h, s, l) : getSimpleName(h, s, l);
+  const emoji = getEmoji(h, s, l);
+  return { name, hex, emoji };
+}
+
+function getSimpleName(h, s, l) {
+  if (l > 0.88) return 'White';
+  if (l < 0.12) return 'Black';
+  if (h < 15 || h >= 345) return l > 0.75 ? 'Pink' : 'Red';
+  if (h < 40) return 'Orange';
+  if (h < 70) return 'Yellow';
+  if (h < 155) return 'Green';
+  if (h < 175) return 'Teal';
+  if (h < 255) return 'Blue';
+  if (h < 285) return 'Purple';
+  if (h < 320) return 'Pink';
+  if (h < 345) return l > 0.6 ? 'Pink' : 'Red';
+  return 'Red';
+}
+
+function getComplexName(h, s, l) {
+  if (l > 0.9) return 'White';
+  if (l < 0.1) return 'Black';
+  if (h < 8 || h >= 350) {
+    if (l > 0.72) return 'Blush';
+    if (l > 0.45) return 'Rose';
+    if (s > 0.7) return 'Crimson';
+    return 'Maroon';
+  }
+  if (h < 20) {
+    if (l > 0.65) return 'Peach';
+    if (s > 0.7) return 'Vermillion';
+    return 'Burnt Orange';
+  }
+  if (h < 40) {
+    if (l > 0.65) return 'Apricot';
+    return 'Tangerine';
+  }
+  if (h < 55) return l > 0.65 ? 'Cream' : 'Gold';
+  if (h < 70) return l > 0.65 ? 'Lemon' : 'Yellow';
+  if (h < 100) return l > 0.5 ? 'Lime' : 'Olive';
+  if (h < 145) return l > 0.5 ? 'Mint' : l < 0.25 ? 'Forest Green' : 'Emerald';
+  if (h < 175) return 'Teal';
+  if (h < 200) return 'Cyan';
+  if (h < 225) return l > 0.55 ? 'Sky Blue' : 'Cerulean';
+  if (h < 255) {
+    if (l <= 0.26) return 'Navy';
+    if (l < 0.45) return 'Royal Blue';
+    return 'Cobalt';
+  }
+  if (h < 285) return l > 0.6 ? 'Lavender' : 'Violet';
+  if (h < 320) return l > 0.7 ? 'Orchid' : s > 0.6 ? 'Magenta' : 'Purple';
+  if (h < 345) return l > 0.65 ? 'Pink' : 'Raspberry';
+  return 'Red';
+}
+
+function getEmoji(h, s, l) {
+  if (l > 0.88) return '🤍';
+  if (l < 0.12) return '🖤';
+  if (h < 15 || h >= 345) return l > 0.72 ? '🩷' : '❤️';
+  if (h < 40) return '🧡';
+  if (h < 70) return '💛';
+  if (h < 155) return '💚';
+  if (h < 175) return '🩵';
+  if (h < 255) return '💙';
+  if (h < 285) return '💜';
+  if (h < 345) return '🩷';
+  return '❤️';
+}
+
+// Auto-start if camera API available
+if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+  // Show permission screen, user taps allow
+} else {
+  document.getElementById('permission-screen').style.display = 'none';
+  const errScreen = document.getElementById('error-screen');
+  errScreen.style.display = 'flex';
+  document.getElementById('error-msg').textContent = 'Your browser does not support camera access. Try Chrome on Android.';
+}
+</script>
 </body>
 </html>
