@@ -74,9 +74,27 @@
     #color-name { transition: opacity 0.3s; }
     #color-hex { display: block; }
 
+    /* Finish filter */
+    #finish-filter-row {
+      padding: 6px 16px 0; display: flex; align-items: center; gap: 6px; overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    #finish-filter-row::-webkit-scrollbar { display: none; }
+    .finish-chip {
+      display: flex; align-items: center;
+      background: rgba(255,255,255,0.08); border: 1.5px solid transparent;
+      border-radius: 16px; color: rgba(255,255,255,0.6);
+      font-size: 11px; font-weight: 700; padding: 5px 11px;
+      cursor: pointer; white-space: nowrap; flex-shrink: 0;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .finish-chip.active {
+      background: rgba(123,97,255,0.2); border-color: #7B61FF; color: #fff;
+    }
+
     /* Brand filter */
     #brand-filter-row {
-      padding: 8px 16px 0; display: flex; align-items: center; gap: 8px; position: relative;
+      padding: 4px 16px 0; display: flex; align-items: center; gap: 8px; position: relative;
     }
     #brand-filter-btn {
       display: flex; align-items: center; gap: 6px;
@@ -330,6 +348,15 @@
       <div id="lighting-dot"></div>
       <span id="lighting-label">Use natural daylight for best results</span>
     </div>
+    <div id="finish-filter-row">
+      <button class="finish-chip active" onclick="selectFinish(null, this)">All</button>
+      <button class="finish-chip" onclick="selectFinish('matt', this)">Matt</button>
+      <button class="finish-chip" onclick="selectFinish('silk', this)">Silk</button>
+      <button class="finish-chip" onclick="selectFinish('eggshell', this)">Eggshell</button>
+      <button class="finish-chip" onclick="selectFinish('gloss', this)">Gloss</button>
+      <button class="finish-chip" onclick="selectFinish('satinwood', this)">Satinwood</button>
+      <button class="finish-chip" onclick="selectFinish('exterior', this)">Exterior</button>
+    </div>
     <div id="brand-filter-row">
       <button id="brand-filter-btn" onclick="toggleBrandDropdown()">
         🎨 Brands <span id="brand-count">4</span>
@@ -386,6 +413,7 @@ let lastSpokenName = '';
 const recentNames = [];
 const recentLums = [];
 let selectedBrands = new Set(['Dulux', 'Crown', 'F&B', 'RAL']);
+let selectedFinish = null;
 let lastR = null, lastG = null, lastB = null;
 
 function toggleVoice() {
@@ -587,6 +615,22 @@ function updateBrandFilter() {
   if (lastR !== null) renderPaintMatches(lastR, lastG, lastB);
 }
 
+// ---- Finish filter ----
+function selectFinish(finish, btn) {
+  selectedFinish = finish;
+  document.querySelectorAll('.finish-chip').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  if (lastR !== null) renderPaintMatches(lastR, lastG, lastB);
+}
+
+function buyUrl(brand, baseUrl, name) {
+  if (!selectedFinish) return baseUrl;
+  if (brand === 'Dulux') {
+    return `https://www.dulux.co.uk/en/products/all?query=${encodeURIComponent(name + ' ' + selectedFinish)}`;
+  }
+  return baseUrl;
+}
+
 // ---- Affiliate URLs (swap in real Awin affiliate ID to activate tracking) ----
 const AWIN_AFFILIATE_ID = null; // Set your Awin ID here e.g. 12345
 const AWIN_MERCHANTS = { 'Dulux': '12009', 'F&B': '14052' };
@@ -646,7 +690,7 @@ function renderPaintMatches(r, g, b) {
         </div>
         <div class="chip-pct" style="color:${pctColor}">${pct}%</div>
       </a>
-      <a class="chip-buy" href="${affiliateUrl(m.brand, m.url)}" target="_blank" rel="noopener noreferrer">Buy</a>
+      <a class="chip-buy" href="${affiliateUrl(m.brand, buyUrl(m.brand, m.url, m.name))}" target="_blank" rel="noopener noreferrer">${selectedFinish ? selectedFinish.charAt(0).toUpperCase() + selectedFinish.slice(1) : 'Buy'}</a>
     </div>`;
   }).join('');
 }
