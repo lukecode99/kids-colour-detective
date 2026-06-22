@@ -1,39 +1,74 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-    <title>Colour Detective</title>
-    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
-    <style id="expo-reset">
-      /* These styles make the body full-height */
-      html,
-      body {
-        height: 100%;
-      }
-      /* These styles disable body scrolling if you are using <ScrollView> */
-      body {
-        overflow: hidden;
-      }
-      /* These styles make the root element full-height */
-      #root {
-        display: flex;
-        height: 100%;
-        flex: 1;
-      }
-      html, body, #root { background-color: #0D0E1A; }
-    </style>
-  <meta name="theme-color" content="#0D0E1A">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Colour Detective</title>
+  <meta name="theme-color" content="#0D0E1A" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      background-color: #0D0E1A;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #fff;
+    }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      text-align: center;
+    }
+    .card {
+      max-width: 380px;
+      width: 100%;
+    }
+    .emoji { font-size: 56px; margin-bottom: 16px; }
+    h1 {
+      font-size: 26px;
+      font-weight: 800;
+      margin-bottom: 12px;
+      line-height: 1.2;
+    }
+    p {
+      font-size: 16px;
+      color: rgba(255,255,255,0.6);
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+    .url-box {
+      background: rgba(123,97,255,0.15);
+      border: 1px solid rgba(123,97,255,0.4);
+      border-radius: 14px;
+      padding: 18px;
+    }
+    .url-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.4);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .url-text {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      color: #a78bfa;
+      word-break: break-all;
+      line-height: 1.6;
+    }
+  </style>
 </head>
-
-  <body>
-    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
-    <noscript>
-      You need to enable JavaScript to run this app.
-    </noscript>
-    <!-- The root element for your Expo app. -->
-    <div id="root"></div>
-  <script src="/_expo/static/js/web/AppEntry-ea2f479a07c07e23a33017611b689888.js" defer></script>
+<body>
+  <div class="card">
+    <div class="emoji">🎨</div>
+    <h1>Colour Detective</h1>
+    <p>This app needs a real camera — open it in <strong>Expo Go</strong> on your phone.</p>
+    <div class="url-box">
+      <div class="url-label">Expo Go URL</div>
+      <div class="url-text">exp://u.expo.dev/aa06313f-dc9d-4ec9-a724-c885adf4f1e3?channel-name=preview</div>
+    </div>
+  </div>
 </body>
 </html>
