@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "Colour Detective",
+    "slug": "kids-color-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "uk.co.colourdetective.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "We use the camera to detect colours around you!",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1a1a2e"
+      },
+      "permissions": [
+        "CAMERA",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "CAMERA",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      "expo-camera"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "aa06313f-dc9d-4ec9-a724-c885adf4f1e3"
+      }
+    },
+    "owner": "nanoluke",
+    "web": {
+      "backgroundColor": "#0D0E1A",
+      "themeColor": "#0D0E1A"
+    }
+  }
+}
