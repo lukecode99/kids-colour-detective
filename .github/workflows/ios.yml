@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     runs-on: macos-26
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v4
@@ -19,12 +19,29 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: npm-${{ hashFiles('package-lock.json', 'package.json') }}
+          restore-keys: npm-
+
       - name: Cache Xcode DerivedData
         uses: actions/cache@v4
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: derived-data-macos26-${{ hashFiles('package-lock.json') }}
+          key: derived-data-macos26-${{ hashFiles('ios/Podfile.lock') }}
           restore-keys: derived-data-macos26-
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        id: pods-cache
+        with:
+          path: |
+            ios/Pods
+            ~/.cocoapods
+          key: pods-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: pods-
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
@@ -128,7 +145,12 @@ jobs:
         run: CI=1 npx expo prebuild --platform ios --clean --no-install
 
       - name: Install CocoaPods
-        run: cd ios && pod install --repo-update
+        if: steps.pods-cache.outputs.cache-hit != 'true'
+        run: cd ios && pod install
+
+      - name: Use cached Pods (skip pod install)
+        if: steps.pods-cache.outputs.cache-hit == 'true'
+        run: echo "Using cached Pods"
 
       - name: Import certificate
         run: |
