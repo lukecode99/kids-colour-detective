@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-26
+    runs-on: macos-15
     timeout-minutes: 180
 
     steps:
@@ -30,8 +30,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: derived-data-macos26-${{ hashFiles('ios/Podfile.lock') }}
-          restore-keys: derived-data-macos26-
+          key: derived-data-macos15-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: derived-data-macos15-
 
       - name: Cache CocoaPods
         uses: actions/cache@v4
@@ -158,12 +158,13 @@ jobs:
           security create-keychain -p "" build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "" build.keychain
+          security set-keychain-settings -t 10800 build.keychain
           security import dist.p12 \
             -k build.keychain \
             -P "${{ secrets.IOS_P12_PASSWORD }}" \
             -T /usr/bin/codesign \
             -T /usr/bin/xcodebuild
-          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
           rm dist.p12
 
       - name: Install provisioning profile
@@ -180,6 +181,7 @@ jobs:
 
       - name: Build iOS archive
         run: |
+          security unlock-keychain -p "" build.keychain
           XCWORKSPACE=$(find ios -maxdepth 1 -name "*.xcworkspace" -type d | head -1)
           echo "Workspace: $XCWORKSPACE"
           SCHEME=$(basename "$XCWORKSPACE" .xcworkspace)
