@@ -25,6 +25,7 @@ if (Platform.OS !== 'web') {
 import { getColorInfo, ColorInfo } from '../utils/colorNames';
 import { extractPixelFromPng, extractAllPixelsFromPng } from '../utils/pngPixel';
 import { COLORS, FONTS } from '../theme';
+import duluxColours from '../utils/duluxColours.json';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -64,16 +65,39 @@ function findWhiteRegion(pixels: [number, number, number][][]): WhiteRef | null 
   return bestScore >= 150 ? best : null;
 }
 
+const duluxData = duluxColours as [string, number, number, number][];
+
+function findNearestDulux(r: number, g: number, b: number): string {
+  let bestDist = Infinity;
+  let bestName = '';
+  for (const [name, dr, dg, db] of duluxData) {
+    const dist = (r - dr) ** 2 + (g - dg) ** 2 + (b - db) ** 2;
+    if (dist < bestDist) { bestDist = dist; bestName = name; }
+  }
+  return bestName;
+}
+
+interface WebColorState {
+  info: ColorInfo;
+  dulux: string;
+  r: number; g: number; b: number;
+}
+
 function WebCameraScreen() {
   const videoRef = useRef<any>(null);
   const canvasRef = useRef<any>(null);
-  const [colorInfo, setColorInfo] = useState<ColorInfo>({ name: 'Detecting…', hex: '#808080', emoji: '🔍' });
+  const streamRef = useRef<any>(null);
+  const [colorState, setColorState] = useState<WebColorState>({
+    info: { name: 'Detecting…', hex: '#808080', emoji: '🔍' }, dulux: '', r: 128, g: 128, b: 128,
+  });
   const [complexMode, setComplexMode] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [savedColors, setSavedColors] = useState<WebColorState[]>([]);
+  const [showSaved, setShowSaved] = useState(false);
   const [camError, setCamError] = useState<string | null>(null);
 
   const breathScale = useRef(new Animated.Value(1)).current;
-  const scanOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     const anim = Animated.loop(
@@ -92,44 +116,94 @@ function WebCameraScreen() {
       .getUserMedia({ video: { facingMode: 'environment' }, audio: false })
       .then((s: any) => {
         stream = s;
-        if (videoRef.current) {
-          videoRef.current.srcObject = s;
-          videoRef.current.play();
+        streamRef.current = s;
+        if (videoRef.current) { videoRef.current.srcObject = s; videoRef.current.play(); }
+        // Check torch support
+        const track = s.getVideoTracks()[0];
+        if (track) {
+          const caps = track.getCapabilities?.() as any;
+          if (caps?.torch) setTorchSupported(true);
         }
       })
       .catch((e: any) => setCamError(e.message || 'Camera access denied'));
     return () => { if (stream) stream.getTracks().forEach((t: any) => t.stop()); };
   }, []);
 
+  const toggleTorch = useCallback(async () => {
+    const stream = streamRef.current;
+    if (!stream) return;
+    const track = stream.getVideoTracks()[0];
+    if (!track) return;
+    const next = !torchOn;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: next } as any] });
+      setTorchOn(next);
+    } catch {}
+  }, [torchOn]);
+
   useEffect(() => {
     const interval = setInterval(() => {
       const video = videoRef.current;
       const canvas = canvasRef.current;
       if (!video || !canvas || video.readyState < 2) return;
-      setIsScanning(true);
       try {
-        canvas.width = 1;
-        canvas.height = 1;
+        canvas.width = 1; canvas.height = 1;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
         const vw = video.videoWidth, vh = video.videoHeight;
         const sw = vw * 0.15, sh = vh * 0.15;
         ctx.drawImage(video, vw / 2 - sw / 2, vh / 2 - sh / 2, sw, sh, 0, 0, 1, 1);
         const px = ctx.getImageData(0, 0, 1, 1).data;
-        setColorInfo(getColorInfo(px[0], px[1], px[2], complexMode));
+        const [r, g, b] = [px[0], px[1], px[2]];
+        setColorState({ info: getColorInfo(r, g, b, complexMode), dulux: findNearestDulux(r, g, b), r, g, b });
       } catch {}
-      setIsScanning(false);
     }, SCAN_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [complexMode]);
+
+  const saveColor = useCallback(() => {
+    setColorState(cs => {
+      setSavedColors(prev => [cs, ...prev.slice(0, 19)]);
+      return cs;
+    });
+  }, []);
 
   if (camError) {
     return (
       <View style={styles.centered}>
         <Text style={styles.permTitle}>📷 Camera Access Needed</Text>
-        <Text style={styles.permText}>
-          Allow camera access in your browser, then reload the page.{'\n\n'}{camError}
-        </Text>
+        <Text style={styles.permText}>Allow camera access in your browser, then reload the page.{'\n\n'}{camError}</Text>
+      </View>
+    );
+  }
+
+  const { info: colorInfo, dulux } = colorState;
+
+  if (showSaved) {
+    return (
+      <View style={[styles.container, { backgroundColor: COLORS.bg }]}>
+        <SafeAreaView style={{ flex: 1, paddingTop: 48 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 16 }}>
+            <TouchableOpacity onPress={() => setShowSaved(false)} style={{ marginRight: 12 }}>
+              <Text style={{ color: COLORS.accent, fontSize: 28 }}>←</Text>
+            </TouchableOpacity>
+            <Text style={{ color: COLORS.text, fontSize: 22, fontWeight: '800' }}>Saved Colours</Text>
+          </View>
+          {savedColors.length === 0 ? (
+            <Text style={{ color: COLORS.textMuted, textAlign: 'center', marginTop: 40, fontSize: 16 }}>No colours saved yet</Text>
+          ) : (
+            savedColors.map((sc, i) => (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' }}>
+                <View style={{ width: 48, height: 48, borderRadius: 10, backgroundColor: sc.info.hex, marginRight: 14 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700' }}>{sc.info.emoji} {sc.info.name}</Text>
+                  <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 2 }}>Dulux: {sc.dulux}</Text>
+                  <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 1 }}>{sc.info.hex}</Text>
+                </View>
+              </View>
+            ))
+          )}
+        </SafeAreaView>
       </View>
     );
   }
@@ -149,32 +223,45 @@ function WebCameraScreen() {
             <Text style={[FONTS.toggle, styles.toggleText, !complexMode && styles.toggleTextActive]}>Simple</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.togglePill, complexMode && styles.toggleActive]} onPress={() => setComplexMode(true)}>
-            <Text style={[FONTS.toggle, styles.toggleText, complexMode && styles.toggleTextActive]}>Complex</Text>
+            <Text style={[FONTS.toggle, styles.toggleText, complexMode && styles.toggleTextActive]}>Dulux</Text>
+          </TouchableOpacity>
+          {torchSupported && (
+            <>
+              <View style={styles.toggleDivider} />
+              <TouchableOpacity style={[styles.togglePill, torchOn && styles.toggleActiveRef]} onPress={toggleTorch}>
+                <Text style={[FONTS.toggle, styles.toggleText, torchOn && styles.toggleTextActive]}>🔦</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          <View style={styles.toggleDivider} />
+          <TouchableOpacity style={styles.togglePill} onPress={() => setShowSaved(true)}>
+            <Text style={[FONTS.toggle, styles.toggleText]}>💾 {savedColors.length > 0 ? savedColors.length : ''}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
 
       <View style={styles.crosshairContainer} pointerEvents="none">
-        <Animated.View style={[styles.crosshairOuter, { transform: [{ scale: breathScale }], opacity: scanOpacity }]}>
+        <Animated.View style={[styles.crosshairOuter, { transform: [{ scale: breathScale }] }]}>
           <View style={styles.circle} />
           <View style={styles.crossHorizontal} />
           <View style={styles.crossVertical} />
         </Animated.View>
       </View>
 
-      <View style={styles.bottomPanel}>
+      <TouchableOpacity style={styles.bottomPanel} onPress={saveColor} activeOpacity={0.85}>
         <View style={[styles.swatchStrip, { backgroundColor: colorInfo.hex }]} />
         <View style={styles.colorInfoRow}>
           <View style={styles.colorTextBlock}>
             <Text style={[FONTS.colorName, styles.colorNameText]}>
               {colorInfo.emoji} {colorInfo.name}
             </Text>
-            {complexMode && (
-              <Text style={[FONTS.colorNameSub, styles.hexText]}>{colorInfo.hex}</Text>
-            )}
+            <Text style={[FONTS.colorNameSub, styles.hexText]}>
+              {complexMode ? `Dulux: ${dulux}` : colorInfo.hex}
+            </Text>
           </View>
+          <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginLeft: 8 }}>tap to save</Text>
         </View>
-      </View>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -194,6 +281,7 @@ function NativeCameraScreen() {
     hex: '#808080',
     emoji: '🔍',
   });
+  const [duluxName, setDuluxName] = useState<string>('');
   const [isScanning, setIsScanning] = useState(false);
   const [complexMode, setComplexMode] = useState(false);
   const [whiteRefEnabled, setWhiteRefEnabled] = useState(false);
@@ -278,6 +366,7 @@ function NativeCameraScreen() {
 
         const info = getColorInfo(r, g, b, complexMode);
         setColorInfo(info);
+        setDuluxName(findNearestDulux(r, g, b));
       }
 
       // White region detection — resize full photo to 16×16 grid
@@ -388,7 +477,7 @@ function NativeCameraScreen() {
             onPress={() => setComplexMode(true)}
           >
             <Text style={[FONTS.toggle, styles.toggleText, complexMode && styles.toggleTextActive]}>
-              Complex
+              Dulux
             </Text>
           </TouchableOpacity>
           <View style={styles.toggleDivider} />
@@ -420,11 +509,11 @@ function NativeCameraScreen() {
         <View style={styles.colorInfoRow}>
           <View style={styles.colorTextBlock}>
             <Text style={[FONTS.colorName, styles.colorNameText]}>
-              {colorInfo.emoji} {colorInfo.name}
+              {colorInfo.emoji} {complexMode ? duluxName : colorInfo.name}
             </Text>
-            {complexMode && (
-              <Text style={[FONTS.colorNameSub, styles.hexText]}>{colorInfo.hex}</Text>
-            )}
+            <Text style={[FONTS.colorNameSub, styles.hexText]}>
+              {complexMode ? colorInfo.hex : ''}
+            </Text>
           </View>
         </View>
       </View>
