@@ -8,7 +8,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "uk.co.colourdetective.app",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
         "NSCameraUsageDescription": "We use the camera to detect colours around you!",
         "ITSAppUsesNonExemptEncryption": false
@@ -19,9 +19,6 @@
         "backgroundColor": "#1a1a2e"
       },
       "permissions": [
-        "CAMERA",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
         "CAMERA",
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
