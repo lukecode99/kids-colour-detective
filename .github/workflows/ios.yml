@@ -30,18 +30,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: derived-data-macos26-${{ hashFiles('ios/Podfile.lock') }}
+          key: derived-data-macos26-${{ hashFiles('package-lock.json') }}
           restore-keys: derived-data-macos26-
 
-      - name: Cache CocoaPods
+      - name: Cache CocoaPods spec repo
         uses: actions/cache@v4
-        id: pods-cache
         with:
-          path: |
-            ios/Pods
-            ~/.cocoapods
-          key: pods-${{ hashFiles('ios/Podfile.lock') }}
-          restore-keys: pods-
+          path: ~/.cocoapods
+          key: cocoapods-specs-${{ hashFiles('**/Podfile') }}
+          restore-keys: cocoapods-specs-
 
       - name: Install dependencies
         run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
@@ -145,12 +142,7 @@ jobs:
         run: CI=1 npx expo prebuild --platform ios --clean --no-install
 
       - name: Install CocoaPods
-        if: steps.pods-cache.outputs.cache-hit != 'true'
         run: cd ios && pod install
-
-      - name: Use cached Pods (skip pod install)
-        if: steps.pods-cache.outputs.cache-hit == 'true'
-        run: echo "Using cached Pods"
 
       - name: Import certificate
         run: |
