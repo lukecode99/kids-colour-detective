@@ -295,10 +295,12 @@ function NativeCameraScreen() {
   const [torchOn, setTorchOn] = useState(false);
   const [savedColors, setSavedColors] = useState<SavedColor[]>([]);
   const [showSaved, setShowSaved] = useState(false);
+  const [isUnstable, setIsUnstable] = useState(false);
 
   const cameraRef = useRef<any>(null);
   const scanningRef = useRef(false);
   const whiteRefDataRef = useRef<WhiteRef | null>(null);
+  const rgbHistoryRef = useRef<[number, number, number][]>([]);
 
   const breathScale = useRef(new Animated.Value(1)).current;
   const scanOpacity = useRef(new Animated.Value(1)).current;
@@ -376,6 +378,21 @@ function NativeCameraScreen() {
         const info = getColorInfo(r, g, b, complexMode);
         setColorInfo(info);
         setDuluxName(findNearestDulux(r, g, b));
+
+        // Stability: track last 5 readings, flag if avg RGB delta > 25
+        const hist = rgbHistoryRef.current;
+        hist.push([r, g, b]);
+        if (hist.length > 5) hist.shift();
+        if (hist.length >= 2) {
+          let totalDelta = 0;
+          for (let i = 1; i < hist.length; i++) {
+            const dr = hist[i][0] - hist[i - 1][0];
+            const dg = hist[i][1] - hist[i - 1][1];
+            const db = hist[i][2] - hist[i - 1][2];
+            totalDelta += Math.sqrt(dr * dr + dg * dg + db * db);
+          }
+          setIsUnstable(totalDelta / (hist.length - 1) > 25);
+        }
       }
 
       // White region detection — resize full photo to 16×16 grid
@@ -492,7 +509,6 @@ function NativeCameraScreen() {
           style={[styles.whiteRefFrame, { left: whiteBoxLeft, top: whiteBoxTop }]}
           pointerEvents="none"
         >
-          {/* Corner brackets */}
           <View style={[styles.corner, { top: 0, left: 0, width: CORNER_LEN, height: CORNER_THICK }]} />
           <View style={[styles.corner, { top: 0, left: 0, width: CORNER_THICK, height: CORNER_LEN }]} />
           <View style={[styles.corner, { top: 0, right: 0, width: CORNER_LEN, height: CORNER_THICK }]} />
@@ -505,56 +521,32 @@ function NativeCameraScreen() {
         </View>
       )}
 
-      {/* Mode toggle — top right */}
-      <SafeAreaView style={styles.topOverlay} pointerEvents="box-none">
-        <View style={styles.toggleContainer}>
+      {/* Top-left: colour name overlay — tappable to save */}
+      <SafeAreaView style={styles.nTopLeft} pointerEvents="box-none">
+        <TouchableOpacity onPress={saveColor} activeOpacity={0.8} style={styles.nColorNameTouchable}>
+          <Text style={styles.nColorName} numberOfLines={2}>
+            {colorInfo.emoji} {complexMode ? duluxName : colorInfo.name}
+          </Text>
+          <Text style={styles.nColorHex}>{colorInfo.hex}</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+
+      {/* Top-right: circular torch + save buttons */}
+      <SafeAreaView style={styles.nTopRight} pointerEvents="box-none">
+        <View style={styles.nCircleBtnRow}>
           <TouchableOpacity
-            style={[styles.togglePill, !complexMode && styles.toggleActive]}
-            onPress={() => setComplexMode(false)}
-          >
-            <Text style={[FONTS.toggle, styles.toggleText, !complexMode && styles.toggleTextActive]}>
-              Simple
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.togglePill, complexMode && styles.toggleActive]}
-            onPress={() => setComplexMode(true)}
-          >
-            <Text style={[FONTS.toggle, styles.toggleText, complexMode && styles.toggleTextActive]}>
-              Dulux
-            </Text>
-          </TouchableOpacity>
-          <View style={styles.toggleDivider} />
-          <TouchableOpacity
-            style={[styles.togglePill, torchOn && styles.toggleActiveRef]}
+            style={[styles.nCircleBtn, torchOn && styles.nCircleBtnTorch]}
             onPress={() => setTorchOn(t => !t)}
           >
-            <Text style={[FONTS.toggle, styles.toggleText, torchOn && styles.toggleTextActive]}>
-              🔦
-            </Text>
+            <Text style={styles.nCircleBtnText}>🔦</Text>
           </TouchableOpacity>
-          <View style={styles.toggleDivider} />
-          <TouchableOpacity
-            style={[styles.togglePill, whiteRefEnabled && styles.toggleActiveRef]}
-            onPress={handleToggleWhiteRef}
-          >
-            <Text style={[FONTS.toggle, styles.toggleText, whiteRefEnabled && styles.toggleTextActive]}>
-              {whiteRefEnabled && !whiteRefPos ? '⬜ …' : '⬜ Ref'}
-            </Text>
-          </TouchableOpacity>
-          <View style={styles.toggleDivider} />
-          <TouchableOpacity
-            style={styles.togglePill}
-            onPress={() => setShowSaved(true)}
-          >
-            <Text style={[FONTS.toggle, styles.toggleText]}>
-              💾{savedColors.length > 0 ? ` ${savedColors.length}` : ''}
-            </Text>
+          <TouchableOpacity style={styles.nCircleBtn} onPress={saveColor}>
+            <Text style={styles.nCircleBtnText}>💾</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
 
-      {/* Center crosshair */}
+      {/* Centre crosshair */}
       <View style={styles.crosshairContainer} pointerEvents="none">
         <Animated.View
           style={[styles.crosshairOuter, { transform: [{ scale: breathScale }], opacity: scanOpacity }]}
@@ -565,21 +557,56 @@ function NativeCameraScreen() {
         </Animated.View>
       </View>
 
-      {/* Bottom panel — tap to save */}
-      <TouchableOpacity style={styles.bottomPanel} onPress={saveColor} activeOpacity={0.85}>
-        <View style={[styles.swatchStrip, { backgroundColor: colorInfo.hex }]} />
-        <View style={styles.colorInfoRow}>
-          <View style={styles.colorTextBlock}>
-            <Text style={[FONTS.colorName, styles.colorNameText]}>
-              {colorInfo.emoji} {complexMode ? duluxName : colorInfo.name}
-            </Text>
-            <Text style={[FONTS.colorNameSub, styles.hexText]}>
-              {complexMode ? colorInfo.hex : ''}
-            </Text>
-          </View>
-          <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginLeft: 8 }}>tap to save</Text>
+      {/* Stability indicator — below crosshair, above bottom panel */}
+      {isUnstable && (
+        <View style={styles.nStabilityBar} pointerEvents="none">
+          <Text style={styles.nStabilityText}>● Unstable — move closer to the surface</Text>
         </View>
-      </TouchableOpacity>
+      )}
+
+      {/* Bottom slim panel */}
+      <View style={styles.nBottomPanel}>
+        {/* Controls: Simple/Dulux + White Ref + Saved */}
+        <View style={styles.nControlRow}>
+          <TouchableOpacity
+            style={[styles.nPill, !complexMode && styles.nPillActive]}
+            onPress={() => setComplexMode(false)}
+          >
+            <Text style={[styles.nPillText, !complexMode && styles.nPillTextActive]}>Simple</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.nPill, complexMode && styles.nPillActive]}
+            onPress={() => setComplexMode(true)}
+          >
+            <Text style={[styles.nPillText, complexMode && styles.nPillTextActive]}>Dulux</Text>
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            style={[styles.nPill, whiteRefEnabled && styles.nPillActiveRef]}
+            onPress={handleToggleWhiteRef}
+          >
+            <Text style={[styles.nPillText, whiteRefEnabled && styles.nPillTextActive]}>
+              {whiteRefEnabled && !whiteRefPos ? '⬜ …' : '⬜ Ref'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.nPill} onPress={() => setShowSaved(true)}>
+            <Text style={styles.nPillText}>
+              🗂{savedColors.length > 0 ? ` ${savedColors.length}` : ''}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Colour swatch strip */}
+        <View style={[styles.nSwatchStrip, { backgroundColor: colorInfo.hex }]} />
+
+        {/* Compact match row */}
+        <View style={styles.nMatchRow}>
+          <Text style={styles.nMatchName}>
+            {colorInfo.emoji} {complexMode ? duluxName : colorInfo.name}
+          </Text>
+          <Text style={styles.nMatchHex}>{colorInfo.hex}</Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -595,6 +622,7 @@ const styles = StyleSheet.create({
   permButton: { backgroundColor: COLORS.accent, paddingHorizontal: 32, paddingVertical: 14, borderRadius: 30 },
   permButtonText: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
 
+  // --- Web layout styles (WebCameraScreen) ---
   topOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
     alignItems: 'flex-end', paddingTop: 12, paddingRight: 16,
@@ -610,7 +638,20 @@ const styles = StyleSheet.create({
   toggleText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '700' },
   toggleTextActive: { color: COLORS.text },
 
-  // White reference framing box
+  bottomPanel: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: 'rgba(13, 14, 26, 0.88)', paddingBottom: 40,
+  },
+  swatchStrip: { height: 8, width: '100%' },
+  colorInfoRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 24, paddingTop: 16, paddingBottom: 8,
+  },
+  colorTextBlock: { flex: 1 },
+  colorNameText: { color: COLORS.text, fontSize: 52, fontWeight: '800', letterSpacing: -1 },
+  hexText: { color: COLORS.textMuted, fontSize: 22, fontWeight: '600', marginTop: 2 },
+
+  // --- White reference framing box (shared) ---
   whiteRefFrame: {
     position: 'absolute', width: WHITE_REF_BOX, height: WHITE_REF_BOX, zIndex: 5,
   },
@@ -622,6 +663,7 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
   },
 
+  // --- Crosshair (shared) ---
   crosshairContainer: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center', justifyContent: 'center',
@@ -635,16 +677,90 @@ const styles = StyleSheet.create({
   crossHorizontal: { position: 'absolute', width: 20, height: 2, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 1 },
   crossVertical: { position: 'absolute', width: 2, height: 20, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 1 },
 
-  bottomPanel: {
+  // --- Native layout styles (NativeCameraScreen) ---
+  nTopLeft: {
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
+    alignItems: 'flex-start',
+  },
+  nColorNameTouchable: {
+    paddingLeft: 20, paddingTop: 14, maxWidth: SCREEN_WIDTH * 0.62,
+  },
+  nColorName: {
+    color: '#FFFFFF',
+    fontSize: 38,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    lineHeight: 44,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
+  },
+  nColorHex: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 15,
+    fontWeight: '600',
+    marginTop: 3,
+    textShadowColor: 'rgba(0,0,0,0.7)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+
+  nTopRight: {
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
+    alignItems: 'flex-end',
+  },
+  nCircleBtnRow: {
+    flexDirection: 'row', gap: 10, paddingRight: 16, paddingTop: 14,
+  },
+  nCircleBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  nCircleBtnTorch: { backgroundColor: 'rgba(212,160,23,0.75)' },
+  nCircleBtnText: { fontSize: 20 },
+
+  nStabilityBar: {
+    position: 'absolute',
+    bottom: 135,
+    left: 0, right: 0,
+    alignItems: 'center', zIndex: 6,
+  },
+  nStabilityText: {
+    color: '#FFD700',
+    fontSize: 13,
+    fontWeight: '700',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+
+  nBottomPanel: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: 'rgba(13, 14, 26, 0.88)', paddingBottom: 40,
+    backgroundColor: 'rgba(13,14,26,0.82)',
+    paddingBottom: 34,
   },
-  swatchStrip: { height: 8, width: '100%' },
-  colorInfoRow: {
+  nControlRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6,
+    gap: 6,
+  },
+  nPill: {
+    paddingHorizontal: 12, paddingVertical: 5,
+    borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  nPillActive: { backgroundColor: COLORS.accent },
+  nPillActiveRef: { backgroundColor: '#d4a017' },
+  nPillText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
+  nPillTextActive: { color: '#fff' },
+
+  nSwatchStrip: { height: 5, width: '100%' },
+  nMatchRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 24, paddingTop: 16, paddingBottom: 8,
+    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6,
   },
-  colorTextBlock: { flex: 1 },
-  colorNameText: { color: COLORS.text, fontSize: 52, fontWeight: '800', letterSpacing: -1 },
-  hexText: { color: COLORS.textMuted, fontSize: 22, fontWeight: '600', marginTop: 2 },
+  nMatchName: { color: COLORS.text, fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
+  nMatchHex: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
 });
