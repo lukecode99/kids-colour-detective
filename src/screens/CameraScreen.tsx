@@ -8,6 +8,7 @@ import {
   Dimensions,
   SafeAreaView,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
@@ -42,6 +43,11 @@ interface WhiteRef {
   b: number;
   gridX: number;
   gridY: number;
+}
+
+interface SavedColor {
+  info: ColorInfo;
+  dulux: string;
 }
 
 function findWhiteRegion(pixels: [number, number, number][][]): WhiteRef | null {
@@ -286,6 +292,9 @@ function NativeCameraScreen() {
   const [complexMode, setComplexMode] = useState(false);
   const [whiteRefEnabled, setWhiteRefEnabled] = useState(false);
   const [whiteRefPos, setWhiteRefPos] = useState<WhiteRef | null>(null);
+  const [torchOn, setTorchOn] = useState(false);
+  const [savedColors, setSavedColors] = useState<SavedColor[]>([]);
+  const [showSaved, setShowSaved] = useState(false);
 
   const cameraRef = useRef<any>(null);
   const scanningRef = useRef(false);
@@ -405,6 +414,10 @@ function NativeCameraScreen() {
     }
   };
 
+  const saveColor = useCallback(() => {
+    setSavedColors(prev => [{ info: colorInfo, dulux: duluxName }, ...prev.slice(0, 19)]);
+  }, [colorInfo, duluxName]);
+
   if (!permission) {
     return (
       <View style={styles.centered}>
@@ -425,6 +438,37 @@ function NativeCameraScreen() {
     );
   }
 
+  if (showSaved) {
+    return (
+      <View style={[styles.container, { backgroundColor: COLORS.bg }]}>
+        <SafeAreaView style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, marginBottom: 16 }}>
+            <TouchableOpacity onPress={() => setShowSaved(false)} style={{ marginRight: 12 }}>
+              <Text style={{ color: COLORS.accent, fontSize: 28 }}>←</Text>
+            </TouchableOpacity>
+            <Text style={{ color: COLORS.text, fontSize: 22, fontWeight: '800' }}>Saved Colours</Text>
+          </View>
+          {savedColors.length === 0 ? (
+            <Text style={{ color: COLORS.textMuted, textAlign: 'center', marginTop: 40, fontSize: 16 }}>No colours saved yet</Text>
+          ) : (
+            <ScrollView>
+              {savedColors.map((sc, i) => (
+                <View key={i} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' }}>
+                  <View style={{ width: 48, height: 48, borderRadius: 10, backgroundColor: sc.info.hex, marginRight: 14 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700' }}>{sc.info.emoji} {sc.info.name}</Text>
+                    <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 2 }}>Dulux: {sc.dulux}</Text>
+                    <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 1 }}>{sc.info.hex}</Text>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </SafeAreaView>
+      </View>
+    );
+  }
+
   // White ref framing box screen position
   const whiteBoxLeft = whiteRefPos
     ? Math.max(4, Math.min(SCREEN_WIDTH - WHITE_REF_BOX - 4,
@@ -440,7 +484,7 @@ function NativeCameraScreen() {
       <StatusBar style="light" />
 
       {/* Full-screen camera */}
-      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
+      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" torch={torchOn ? 'on' : 'off'} />
 
       {/* White reference framing box */}
       {whiteRefEnabled && whiteRefPos && (
@@ -482,11 +526,29 @@ function NativeCameraScreen() {
           </TouchableOpacity>
           <View style={styles.toggleDivider} />
           <TouchableOpacity
+            style={[styles.togglePill, torchOn && styles.toggleActiveRef]}
+            onPress={() => setTorchOn(t => !t)}
+          >
+            <Text style={[FONTS.toggle, styles.toggleText, torchOn && styles.toggleTextActive]}>
+              🔦
+            </Text>
+          </TouchableOpacity>
+          <View style={styles.toggleDivider} />
+          <TouchableOpacity
             style={[styles.togglePill, whiteRefEnabled && styles.toggleActiveRef]}
             onPress={handleToggleWhiteRef}
           >
             <Text style={[FONTS.toggle, styles.toggleText, whiteRefEnabled && styles.toggleTextActive]}>
               {whiteRefEnabled && !whiteRefPos ? '⬜ …' : '⬜ Ref'}
+            </Text>
+          </TouchableOpacity>
+          <View style={styles.toggleDivider} />
+          <TouchableOpacity
+            style={styles.togglePill}
+            onPress={() => setShowSaved(true)}
+          >
+            <Text style={[FONTS.toggle, styles.toggleText]}>
+              💾{savedColors.length > 0 ? ` ${savedColors.length}` : ''}
             </Text>
           </TouchableOpacity>
         </View>
@@ -503,8 +565,8 @@ function NativeCameraScreen() {
         </Animated.View>
       </View>
 
-      {/* Bottom panel */}
-      <View style={styles.bottomPanel}>
+      {/* Bottom panel — tap to save */}
+      <TouchableOpacity style={styles.bottomPanel} onPress={saveColor} activeOpacity={0.85}>
         <View style={[styles.swatchStrip, { backgroundColor: colorInfo.hex }]} />
         <View style={styles.colorInfoRow}>
           <View style={styles.colorTextBlock}>
@@ -515,8 +577,9 @@ function NativeCameraScreen() {
               {complexMode ? colorInfo.hex : ''}
             </Text>
           </View>
+          <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginLeft: 8 }}>tap to save</Text>
         </View>
-      </View>
+      </TouchableOpacity>
     </View>
   );
 }
