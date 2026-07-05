@@ -46,7 +46,7 @@ describe('buildCombinedView (combined matches + goes-with view)', () => {
     for (const m of view.matches) {
       expect(m.paint.brand).toBe(brand);
     }
-    expect(view.suggestions).toHaveLength(5);
+    expect(view.suggestions).toHaveLength(6);
     for (const s of view.suggestions) {
       if (!s.outsideFilters) expect(s.paint.brand).toBe(brand);
     }
@@ -58,7 +58,7 @@ describe('buildCombinedView (combined matches + goes-with view)', () => {
   it('a filter matching nothing still yields a full palette, all flagged outside the filters', () => {
     const view = buildCombinedView(SAGE, []);
     expect(view.matches).toHaveLength(0);
-    expect(view.suggestions).toHaveLength(5);
+    expect(view.suggestions).toHaveLength(6);
     for (const s of view.suggestions) {
       expect(s.outsideFilters).toBe(true);
       expect(isRealPaint(s.paint)).toBe(true);

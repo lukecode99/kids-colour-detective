@@ -1,9 +1,9 @@
 // Palette ideas for a colour: a 60-30-10 room plan plus complementary /
-// analogous / triadic suggestions, every one mapped to a real paint
-// (brand + code + swatch) — never a bare hex. Callers that already hold
-// a CombinedView pass its scheme/suggestions via `view`; otherwise the
-// palette is computed here from `hex`.
-import React, { useMemo } from 'react';
+// analogous / triadic / contrast suggestions, every one mapped to a real
+// paint (brand + code + swatch) — never a bare hex. Callers that already
+// hold a CombinedView pass its scheme/suggestions via `view`; otherwise
+// the palette is computed here from `hex`.
+import React, { useMemo, useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { hexToRgb } from '../utils/colorMath';
 import {
@@ -21,17 +21,23 @@ const ROLE_LABELS: Record<HarmonyRole, string> = {
   complementary: 'Complementary — the opposite, maximum pop',
   analogous: 'Analogous — neighbours, calm and harmonious',
   triadic: 'Triadic — balanced three-way contrast',
+  contrast: 'Contrast — opposite hue, light-dark flipped',
 };
+
+const suggestionKey = (s: PaintSuggestion) => `${s.role}${s.angle}`;
 
 function PaintRow({
   paint,
   onSelect,
   outsideFilters,
+  highlighted,
 }: {
   paint: Paint;
   onSelect?: (paint: Paint) => void;
   outsideFilters?: boolean;
+  highlighted?: boolean;
 }) {
+  const rowStyle = highlighted ? [pStyles.paintRow, pStyles.paintRowHighlighted] : pStyles.paintRow;
   const body = (
     <>
       <View style={[pStyles.swatch, { backgroundColor: paint.hex }]} />
@@ -47,11 +53,46 @@ function PaintRow({
       <BuyButton paint={paint} compact />
     </>
   );
-  if (!onSelect) return <View style={pStyles.paintRow}>{body}</View>;
+  if (!onSelect) return <View style={rowStyle}>{body}</View>;
   return (
-    <TouchableOpacity style={pStyles.paintRow} onPress={() => onSelect(paint)}>
+    <TouchableOpacity style={rowStyle} onPress={() => onSelect(paint)}>
       {body}
     </TouchableOpacity>
+  );
+}
+
+// CD-16: mini room-plan bar for one harmony group — the base colour
+// dominant (as walls would be) with the group's suggested paints adjacent,
+// so every goes-with type gets the same at-a-glance preview the 60-30-10
+// scheme has. Tapping a suggestion segment highlights its row below.
+function GroupBar({
+  baseHex,
+  items,
+  highlightedKey,
+  onSegmentPress,
+}: {
+  baseHex: string;
+  items: PaintSuggestion[];
+  highlightedKey: string | null;
+  onSegmentPress: (key: string) => void;
+}) {
+  return (
+    <View style={pStyles.schemeBar}>
+      <View style={[pStyles.schemeSegment, { flex: 6, backgroundColor: baseHex }]} />
+      {items.map(s => (
+        <TouchableOpacity
+          key={suggestionKey(s)}
+          style={[
+            pStyles.schemeSegment,
+            { flex: 4 / items.length, backgroundColor: s.paint.hex },
+            highlightedKey === suggestionKey(s) && pStyles.segmentHighlighted,
+          ]}
+          onPress={() => onSegmentPress(suggestionKey(s))}
+          accessibilityRole="button"
+          accessibilityLabel={`Highlight ${s.paint.name}`}
+        />
+      ))}
+    </View>
   );
 }
 
@@ -67,6 +108,7 @@ export default function PaletteIdeas({
   onSelectPaint?: (paint: Paint) => void;
 }) {
   const rgb = useMemo(() => hexToRgb(hex), [hex]);
+  const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const { scheme, suggestions } = useMemo(
     () => view ?? { scheme: roomScheme(rgb, candidates), suggestions: harmonySuggestions(rgb, candidates) },
     [rgb, view, candidates]
@@ -110,12 +152,19 @@ export default function PaletteIdeas({
       {byRole.map(group => (
         <View key={group.role} style={{ marginTop: 12 }}>
           <Text style={pStyles.sectionTitle}>{ROLE_LABELS[group.role]}</Text>
+          <GroupBar
+            baseHex={hex}
+            items={group.items}
+            highlightedKey={highlightedKey}
+            onSegmentPress={key => setHighlightedKey(cur => (cur === key ? null : key))}
+          />
           {group.items.map(s => (
             <PaintRow
-              key={`${s.role}${s.angle}`}
+              key={suggestionKey(s)}
               paint={s.paint}
               onSelect={onSelectPaint}
               outsideFilters={s.outsideFilters}
+              highlighted={highlightedKey === suggestionKey(s)}
             />
           ))}
         </View>
@@ -157,6 +206,14 @@ const pStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 4,
+  },
+  paintRowHighlighted: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 8,
+  },
+  segmentHighlighted: {
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
   },
   swatch: {
     width: 26,

@@ -1,13 +1,14 @@
 // Colour-harmony suggestions for a saved colour: complementary (180°),
-// analogous (±30°), triadic (±120°), plus a 60-30-10 room scheme. Every
-// suggestion is mapped to the nearest real paint in the dataset — the UI
-// never shows a bare hex the user can't buy.
+// analogous (±30°), triadic (±120°), contrast (180° with lightness
+// flipped), plus a 60-30-10 room scheme. Every suggestion is mapped to
+// the nearest real paint in the dataset — the UI never shows a bare hex
+// the user can't buy.
 import { rgbToHsl, hslToRgb, rgbToLab } from './colorMath';
 import { matchPaintsLab, Paint, PAINTS } from './paintMatcher';
 
 export type Rgb3 = [number, number, number];
 
-export type HarmonyRole = 'complementary' | 'analogous' | 'triadic';
+export type HarmonyRole = 'complementary' | 'analogous' | 'triadic' | 'contrast';
 
 export interface PaintSuggestion {
   role: HarmonyRole;
@@ -39,6 +40,17 @@ export function harmonyTarget(rgb: Rgb3, angle: number): Rgb3 {
   const ts = s < NEUTRAL_SAT ? MIN_TARGET_SAT : s;
   const tl = Math.min(MAX_TARGET_L, Math.max(MIN_TARGET_L, l));
   return hslToRgb(h + angle, ts, tl);
+}
+
+// Contrast target (CD-16): the complementary hue with lightness flipped —
+// a dark base asks for a light paint and vice versa. That extra light-dark
+// jump makes it a genuinely higher-contrast pairing than plain
+// complementary, which keeps the base's lightness.
+export function contrastTarget(rgb: Rgb3): Rgb3 {
+  const [h, s, l] = rgbToHsl(rgb[0], rgb[1], rgb[2]);
+  const ts = s < NEUTRAL_SAT ? MIN_TARGET_SAT : s;
+  const tl = Math.min(MAX_TARGET_L, Math.max(MIN_TARGET_L, 1 - l));
+  return hslToRgb(h + 180, ts, tl);
 }
 
 const paintKey = (p: Paint) => `${p.brand}|${p.code}|${p.name}`;
@@ -83,6 +95,7 @@ const HARMONY_ANGLES: { role: HarmonyRole; angle: number }[] = [
   { role: 'analogous', angle: 30 },
   { role: 'triadic', angle: 120 },
   { role: 'triadic', angle: 240 },
+  { role: 'contrast', angle: 180 }, // hue like complementary, lightness flipped
 ];
 
 export function harmonySuggestions(rgb: Rgb3, candidates: Paint[] = PAINTS): PaintSuggestion[] {
@@ -90,7 +103,7 @@ export function harmonySuggestions(rgb: Rgb3, candidates: Paint[] = PAINTS): Pai
   // Reserve the base colour's own paint so suggestions differ from it.
   pickWithFilterFallback(rgb, used, candidates);
   return HARMONY_ANGLES.map(({ role, angle }) => {
-    const target = harmonyTarget(rgb, angle);
+    const target = role === 'contrast' ? contrastTarget(rgb) : harmonyTarget(rgb, angle);
     const { paint, deltaE, outsideFilters } = pickWithFilterFallback(target, used, candidates);
     return outsideFilters ? { role, angle, paint, deltaE, outsideFilters } : { role, angle, paint, deltaE };
   });
