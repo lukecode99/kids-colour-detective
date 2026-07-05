@@ -11,6 +11,7 @@ import {
   HarmonyRole,
 } from '../utils/colorHarmony';
 import { Paint } from '../utils/paintMatcher';
+import BuyButton from './BuyButton';
 import { COLORS } from '../theme';
 
 const ROLE_LABELS: Record<HarmonyRole, string> = {
@@ -31,6 +32,7 @@ function PaintRow({ paint }: { paint: Paint }) {
           {paint.code ? `${paint.code} · ` : ''}{paint.hex.toUpperCase()}
         </Text>
       </View>
+      <BuyButton paint={paint} compact />
     </View>
   );
 }

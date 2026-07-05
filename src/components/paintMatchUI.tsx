@@ -5,6 +5,8 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView } from 'react-native';
 
 import { PaintMatch, PAINTS } from '../utils/paintMatcher';
+import BuyButton from './BuyButton';
+import CoverageCalculator from './CoverageCalculator';
 import {
   PaintFilters,
   EMPTY_FILTERS,
@@ -23,8 +25,10 @@ export function bestMatchLabel(matches: PaintMatch[]): string {
   return m ? `${m.paint.brand} — ${m.paint.name} (${m.matchPercent}%)` : '';
 }
 
-// Shared top-5 list rendered in paint mode on both platforms.
+// Shared top-5 list rendered in paint mode on both platforms. Every row
+// carries a buy link; the top match gets a coverage-calculator expander.
 export function MatchList({ matches }: { matches: PaintMatch[] }) {
+  const [showCalc, setShowCalc] = useState(false);
   if (!matches.length) return null;
   return (
     <View style={styles.matchList}>
@@ -37,8 +41,15 @@ export function MatchList({ matches }: { matches: PaintMatch[] }) {
           <Text style={styles.matchListPct}>
             {m.matchPercent}% · {m.closeness}
           </Text>
+          <BuyButton paint={m.paint} compact />
         </View>
       ))}
+      <TouchableOpacity onPress={() => setShowCalc(v => !v)} hitSlop={{ top: 6, bottom: 6 }}>
+        <Text style={styles.calcToggle}>
+          {showCalc ? '▾' : '▸'} 📐 How much paint do I need?
+        </Text>
+      </TouchableOpacity>
+      {showCalc && <CoverageCalculator paint={matches[0].paint} />}
     </View>
   );
 }
@@ -172,4 +183,5 @@ const styles = StyleSheet.create({
   },
   matchListName: { flex: 1, color: COLORS.text, fontSize: 13, fontWeight: '600' },
   matchListPct: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginLeft: 8 },
+  calcToggle: { color: COLORS.accent, fontSize: 12, fontWeight: '700', paddingTop: 8 },
 });
