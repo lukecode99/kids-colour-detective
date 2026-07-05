@@ -30,6 +30,7 @@ import {
   usePaintFilters,
   bestMatchLabel,
 } from '../components/paintMatchUI';
+import { bestMatchInfo } from '../utils/matchLabel';
 import { COLORS } from '../theme';
 
 export default function MatchesScreen() {
@@ -53,6 +54,7 @@ export default function MatchesScreen() {
       name: current.name,
       emoji: getColorInfo(r, g, b, true).emoji,
       match: bestMatchLabel(view.matches),
+      bestMatch: bestMatchInfo(view.matches),
       timestamp: Date.now(),
     });
     setSavedHex(current.hex);

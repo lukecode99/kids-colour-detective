@@ -38,6 +38,7 @@ import {
   lightingHint,
 } from '../utils/scanQuality';
 import { bestMatchLabel, usePaintFilters } from '../components/paintMatchUI';
+import { bestMatchInfo } from '../utils/matchLabel';
 import PhotoPickerScreen from './PhotoPickerScreen';
 import { addSavedColor, newSavedColorId } from '../utils/savedColors';
 import { setCurrentColour } from '../utils/currentColour';
@@ -267,6 +268,7 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
           name: cs.info.name,
           emoji: cs.info.emoji,
           match: bestMatchLabel(cs.matches),
+          bestMatch: bestMatchInfo(cs.matches),
           timestamp: Date.now(),
         },
         thumb
@@ -527,6 +529,7 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         name: colorInfo.name,
         emoji: colorInfo.emoji,
         match: bestMatchLabel(matches),
+        bestMatch: bestMatchInfo(matches),
         timestamp: Date.now(),
       },
       thumb

@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView } from 'react-native';
 
 import { PaintMatch, PAINTS } from '../utils/paintMatcher';
+import { bestMatchInfo, formatMatchLabel } from '../utils/matchLabel';
 import BuyButton from './BuyButton';
 import CoverageCalculator from './CoverageCalculator';
 import {
@@ -21,8 +22,8 @@ import {
 import { COLORS } from '../theme';
 
 export function bestMatchLabel(matches: PaintMatch[]): string {
-  const m = matches[0];
-  return m ? `${m.paint.brand} — ${m.paint.name} (${m.matchPercent}%)` : '';
+  const info = bestMatchInfo(matches);
+  return info ? formatMatchLabel(info) : '';
 }
 
 // Shared top-5 list rendered in paint mode on both platforms. Every row
@@ -35,9 +36,14 @@ export function MatchList({ matches }: { matches: PaintMatch[] }) {
       {matches.map((m, i) => (
         <View key={`${m.paint.brand}-${m.paint.name}-${i}`} style={styles.matchListRow}>
           <View style={[styles.matchListSwatch, { backgroundColor: m.paint.hex }]} />
-          <Text style={styles.matchListName} numberOfLines={1}>
-            {m.paint.brand} · {m.paint.name}
-          </Text>
+          <View style={styles.matchListText}>
+            <Text style={styles.matchListName} numberOfLines={2}>
+              {m.paint.name}
+            </Text>
+            <Text style={styles.matchListBrand} numberOfLines={1}>
+              {m.paint.brand}
+            </Text>
+          </View>
           <Text style={styles.matchListPct}>
             {m.matchPercent}% · {m.closeness}
           </Text>
@@ -181,7 +187,9 @@ const styles = StyleSheet.create({
     width: 18, height: 18, borderRadius: 4, marginRight: 10,
     borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.25)',
   },
-  matchListName: { flex: 1, color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  matchListText: { flex: 1 },
+  matchListName: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  matchListBrand: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
   matchListPct: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginLeft: 8 },
   calcToggle: { color: COLORS.accent, fontSize: 12, fontWeight: '700', paddingTop: 8 },
 });

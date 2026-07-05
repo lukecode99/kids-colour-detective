@@ -1,12 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
+import { BestMatchInfo } from './matchLabel';
+
 export interface SavedColorEntry {
   id: string;
   hex: string; // corrected colour (post white-balance)
   name: string;
   emoji: string;
-  match: string; // best paint match label at save time
+  match: string; // legacy frozen label ("Brand — Name (96%)"), kept so pre-CD-14 entries still render
+  bestMatch?: BestMatchInfo; // structured best match at save time (CD-14)
   timestamp: number;
   label?: string; // optional room label, e.g. "Kitchen"
   thumbnailUri?: string; // FileSystem file on native, data URL on web

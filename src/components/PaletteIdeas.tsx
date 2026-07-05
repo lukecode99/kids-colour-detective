@@ -28,11 +28,11 @@ function PaintRow({ paint, onSelect }: { paint: Paint; onSelect?: (paint: Paint)
     <>
       <View style={[pStyles.swatch, { backgroundColor: paint.hex }]} />
       <View style={{ flex: 1 }}>
-        <Text style={pStyles.paintName} numberOfLines={1}>
-          {paint.brand} — {paint.name}
+        <Text style={pStyles.paintName} numberOfLines={2}>
+          {paint.name}
         </Text>
         <Text style={pStyles.paintCode}>
-          {paint.code ? `${paint.code} · ` : ''}{paint.hex.toUpperCase()}
+          {paint.brand} · {paint.code ? `${paint.code} · ` : ''}{paint.hex.toUpperCase()}
         </Text>
       </View>
       <BuyButton paint={paint} compact />

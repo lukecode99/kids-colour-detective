@@ -22,6 +22,7 @@ import {
   removeSavedColor,
   setSavedColorLabel,
 } from '../utils/savedColors';
+import { parseMatchLabel } from '../utils/matchLabel';
 import { COLORS } from '../theme';
 
 // Loads the persisted saved-colours list and exposes mutators that keep
@@ -70,6 +71,9 @@ function SavedColorRow({
   const [label, setLabel] = useState(sc.label ?? '');
   const [showIdeas, setShowIdeas] = useState(false);
   const commit = () => onLabel(sc.id, label);
+  // Pre-CD-14 entries froze the match as one string — recover the parts so
+  // the paint name gets its own full-width line on old cards too.
+  const match = sc.bestMatch ?? (sc.match ? parseMatchLabel(sc.match) : undefined);
   return (
     <View style={styles.savedRow}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -83,8 +87,24 @@ function SavedColorRow({
           <Text style={{ color: COLORS.text, fontSize: 17, fontWeight: '700' }}>
             {sc.emoji} {sc.name}
           </Text>
-          {!!sc.match && (
-            <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 2 }}>{sc.match}</Text>
+          {match ? (
+            <>
+              <Text
+                style={{ color: COLORS.text, fontSize: 13, fontWeight: '600', marginTop: 2 }}
+                numberOfLines={2}
+              >
+                {match.name}
+              </Text>
+              <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 1 }}>
+                {match.brand} · {match.pct}% match
+              </Text>
+            </>
+          ) : (
+            !!sc.match && (
+              <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 2 }}>
+                {sc.match}
+              </Text>
+            )
           )}
           <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 1 }}>
             {sc.hex} · {formatTimestamp(sc.timestamp)}
