@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Platform, View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import CameraScreen from './src/screens/CameraScreen';
+import WheelScreen from './src/screens/WheelScreen';
 import MyColoursScreen from './src/screens/MyColoursScreen';
 
 interface State {
@@ -34,10 +35,12 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, State
 // Matches and Saved merged into My Colours (CD-13): one card per capture
 // — live scan on top, saved captures below, each with filterable matches
 // and its goes-with palette.
-type TabKey = 'scan' | 'colours';
+// Planner (CD-17): pick a primary colour on a wheel instead of scanning.
+type TabKey = 'scan' | 'wheel' | 'colours';
 
 const TABS: { key: TabKey; icon: string; label: string }[] = [
   { key: 'scan', icon: '🎯', label: 'Scan' },
+  { key: 'wheel', icon: '🎡', label: 'Planner' },
   { key: 'colours', icon: '🎨', label: 'My Colours' },
 ];
 
@@ -49,6 +52,7 @@ function TabRoot() {
     <View style={styles.root}>
       <View style={{ flex: 1 }}>
         {tab === 'scan' && <CameraScreen />}
+        {tab === 'wheel' && <WheelScreen />}
         {tab === 'colours' && <MyColoursScreen />}
       </View>
       <SafeAreaView style={styles.tabBarSafe}>
