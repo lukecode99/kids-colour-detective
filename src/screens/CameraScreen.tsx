@@ -49,6 +49,7 @@ import {
   usePaintFilters,
 } from '../components/paintMatchUI';
 import PhotoPickerScreen from './PhotoPickerScreen';
+import PaletteIdeas from '../components/PaletteIdeas';
 import {
   SavedColorEntry,
   loadSavedColors,
@@ -170,39 +171,48 @@ function SavedColorRow({
   onLabel: (id: string, label: string) => void;
 }) {
   const [label, setLabel] = useState(sc.label ?? '');
+  const [showIdeas, setShowIdeas] = useState(false);
   const commit = () => onLabel(sc.id, label);
   return (
     <View style={styles.savedRow}>
-      {sc.thumbnailUri ? (
-        <Image source={{ uri: sc.thumbnailUri }} style={styles.savedThumb} />
-      ) : (
-        <View style={[styles.savedThumb, { backgroundColor: sc.hex }]} />
-      )}
-      <View style={[styles.savedSwatchBar, { backgroundColor: sc.hex }]} />
-      <View style={{ flex: 1 }}>
-        <Text style={{ color: COLORS.text, fontSize: 17, fontWeight: '700' }}>
-          {sc.emoji} {sc.name}
-        </Text>
-        {!!sc.match && (
-          <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 2 }}>{sc.match}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        {sc.thumbnailUri ? (
+          <Image source={{ uri: sc.thumbnailUri }} style={styles.savedThumb} />
+        ) : (
+          <View style={[styles.savedThumb, { backgroundColor: sc.hex }]} />
         )}
-        <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 1 }}>
-          {sc.hex} · {formatTimestamp(sc.timestamp)}
-        </Text>
-        <TextInput
-          style={styles.savedLabelInput}
-          placeholder="Add room label…"
-          placeholderTextColor="rgba(255,255,255,0.3)"
-          value={label}
-          onChangeText={setLabel}
-          onBlur={commit}
-          onSubmitEditing={commit}
-          returnKeyType="done"
-        />
+        <View style={[styles.savedSwatchBar, { backgroundColor: sc.hex }]} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: COLORS.text, fontSize: 17, fontWeight: '700' }}>
+            {sc.emoji} {sc.name}
+          </Text>
+          {!!sc.match && (
+            <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 2 }}>{sc.match}</Text>
+          )}
+          <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 1 }}>
+            {sc.hex} · {formatTimestamp(sc.timestamp)}
+          </Text>
+          <TextInput
+            style={styles.savedLabelInput}
+            placeholder="Add room label…"
+            placeholderTextColor="rgba(255,255,255,0.3)"
+            value={label}
+            onChangeText={setLabel}
+            onBlur={commit}
+            onSubmitEditing={commit}
+            returnKeyType="done"
+          />
+          <TouchableOpacity onPress={() => setShowIdeas(v => !v)} hitSlop={{ top: 6, bottom: 6 }}>
+            <Text style={styles.ideasToggle}>
+              {showIdeas ? '▾' : '▸'} 🎨 Goes-with paints
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity onPress={() => onRemove(sc.id)} style={styles.savedDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={{ color: COLORS.textMuted, fontSize: 16 }}>✕</Text>
+        </TouchableOpacity>
       </View>
-      <TouchableOpacity onPress={() => onRemove(sc.id)} style={styles.savedDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-        <Text style={{ color: COLORS.textMuted, fontSize: 16 }}>✕</Text>
-      </TouchableOpacity>
+      {showIdeas && <PaletteIdeas hex={sc.hex} />}
     </View>
   );
 }
@@ -1044,10 +1054,10 @@ const styles = StyleSheet.create({
   },
   savedEmpty: { color: COLORS.textMuted, textAlign: 'center', marginTop: 40, fontSize: 16 },
   savedRow: {
-    flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 10,
     borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)',
   },
+  ideasToggle: { color: COLORS.accent, fontSize: 13, fontWeight: '700', marginTop: 8 },
   savedThumb: { width: 56, height: 56, borderRadius: 10 },
   savedSwatchBar: { width: 6, height: 56, borderRadius: 3, marginLeft: 6, marginRight: 12 },
   savedLabelInput: {
