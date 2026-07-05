@@ -1,13 +1,16 @@
-// Palette ideas for a saved colour: a 60-30-10 room plan plus
-// complementary / analogous / triadic suggestions, every one mapped to a
-// real paint (brand + code + swatch) — never a bare hex.
+// Palette ideas for a colour: a 60-30-10 room plan plus complementary /
+// analogous / triadic suggestions, every one mapped to a real paint
+// (brand + code + swatch) — never a bare hex. Callers that already hold
+// a CombinedView pass its scheme/suggestions via `view`; otherwise the
+// palette is computed here from `hex`.
 import React, { useMemo } from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { hexToRgb } from '../utils/colorMath';
 import {
   harmonySuggestions,
   roomScheme,
   PaintSuggestion,
+  RoomScheme,
   HarmonyRole,
 } from '../utils/colorHarmony';
 import { Paint } from '../utils/paintMatcher';
@@ -20,9 +23,9 @@ const ROLE_LABELS: Record<HarmonyRole, string> = {
   triadic: 'Triadic — balanced three-way contrast',
 };
 
-function PaintRow({ paint }: { paint: Paint }) {
-  return (
-    <View style={pStyles.paintRow}>
+function PaintRow({ paint, onSelect }: { paint: Paint; onSelect?: (paint: Paint) => void }) {
+  const body = (
+    <>
       <View style={[pStyles.swatch, { backgroundColor: paint.hex }]} />
       <View style={{ flex: 1 }}>
         <Text style={pStyles.paintName} numberOfLines={1}>
@@ -33,14 +36,30 @@ function PaintRow({ paint }: { paint: Paint }) {
         </Text>
       </View>
       <BuyButton paint={paint} compact />
-    </View>
+    </>
+  );
+  if (!onSelect) return <View style={pStyles.paintRow}>{body}</View>;
+  return (
+    <TouchableOpacity style={pStyles.paintRow} onPress={() => onSelect(paint)}>
+      {body}
+    </TouchableOpacity>
   );
 }
 
-export default function PaletteIdeas({ hex }: { hex: string }) {
+export default function PaletteIdeas({
+  hex,
+  view,
+  onSelectPaint,
+}: {
+  hex: string;
+  view?: { scheme: RoomScheme; suggestions: PaintSuggestion[] };
+  onSelectPaint?: (paint: Paint) => void;
+}) {
   const rgb = useMemo(() => hexToRgb(hex), [hex]);
-  const scheme = useMemo(() => roomScheme(rgb), [rgb]);
-  const suggestions = useMemo(() => harmonySuggestions(rgb), [rgb]);
+  const { scheme, suggestions } = useMemo(
+    () => view ?? { scheme: roomScheme(rgb), suggestions: harmonySuggestions(rgb) },
+    [rgb, view]
+  );
 
   const byRole = useMemo(() => {
     const groups: { role: HarmonyRole; items: PaintSuggestion[] }[] = [];
@@ -74,14 +93,14 @@ export default function PaletteIdeas({ hex }: { hex: string }) {
           <Text style={pStyles.schemePct}>
             {p.pct} <Text style={pStyles.schemeHint}>{p.hint}</Text>
           </Text>
-          <PaintRow paint={p.paint} />
+          <PaintRow paint={p.paint} onSelect={onSelectPaint} />
         </View>
       ))}
       {byRole.map(group => (
         <View key={group.role} style={{ marginTop: 12 }}>
           <Text style={pStyles.sectionTitle}>{ROLE_LABELS[group.role]}</Text>
           {group.items.map(s => (
-            <PaintRow key={`${s.role}${s.angle}`} paint={s.paint} />
+            <PaintRow key={`${s.role}${s.angle}`} paint={s.paint} onSelect={onSelectPaint} />
           ))}
         </View>
       ))}
