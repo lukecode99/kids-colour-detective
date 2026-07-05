@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Platform, View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import CameraScreen from './src/screens/CameraScreen';
 import WheelScreen from './src/screens/WheelScreen';
+import BrandMatchScreen from './src/screens/BrandMatchScreen';
 import MyColoursScreen from './src/screens/MyColoursScreen';
 
 interface State {
@@ -36,11 +37,13 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, State
 // — live scan on top, saved captures below, each with filterable matches
 // and its goes-with palette.
 // Planner (CD-17): pick a primary colour on a wheel instead of scanning.
-type TabKey = 'scan' | 'wheel' | 'colours';
+// Brands (CD-18): pick a brand colour, see cross-brand alternates by ΔE.
+type TabKey = 'scan' | 'wheel' | 'brands' | 'colours';
 
 const TABS: { key: TabKey; icon: string; label: string }[] = [
   { key: 'scan', icon: '🎯', label: 'Scan' },
   { key: 'wheel', icon: '🎡', label: 'Planner' },
+  { key: 'brands', icon: '🔁', label: 'Brands' },
   { key: 'colours', icon: '🎨', label: 'My Colours' },
 ];
 
@@ -53,6 +56,7 @@ function TabRoot() {
       <View style={{ flex: 1 }}>
         {tab === 'scan' && <CameraScreen />}
         {tab === 'wheel' && <WheelScreen />}
+        {tab === 'brands' && <BrandMatchScreen />}
         {tab === 'colours' && <MyColoursScreen />}
       </View>
       <SafeAreaView style={styles.tabBarSafe}>
