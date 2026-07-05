@@ -5,7 +5,11 @@ import {
   removeSavedColor,
   setSavedColorLabel,
   newSavedColorId,
+  withColourData,
+  SavedColorEntry,
 } from '../savedColors';
+import { hexToRgb, rgbToLab } from '../colorMath';
+import { matchPaintsLab } from '../paintMatcher';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest')
@@ -97,5 +101,46 @@ describe('saved colours persistence', () => {
   it('generates unique ids', () => {
     const ids = new Set(Array.from({ length: 100 }, () => newSavedColorId()));
     expect(ids.size).toBe(100);
+  });
+});
+
+describe('entry colour data & legacy migration (CD-13)', () => {
+  it('new saves persist rgb and lab derived from the hex', async () => {
+    await addSavedColor(entry({ hex: '#4CAF50' }));
+    const [loaded] = await loadSavedColors();
+    expect(loaded.rgb).toEqual(hexToRgb('#4CAF50'));
+    expect(loaded.lab).toEqual(rgbToLab(...hexToRgb('#4CAF50')));
+  });
+
+  it('legacy hex-only entries gain rgb/lab on load and the migration is persisted', async () => {
+    const legacy = [entry({ hex: '#C8B4A0' }), entry({ hex: '#1565C0' })];
+    await AsyncStorage.setItem('savedColors.v1', JSON.stringify(legacy));
+
+    const loaded = await loadSavedColors();
+    expect(loaded).toHaveLength(2);
+    for (const e of loaded) {
+      expect(e.rgb).toEqual(hexToRgb(e.hex));
+      expect(e.lab).toEqual(rgbToLab(...hexToRgb(e.hex)));
+    }
+
+    // persisted back, so the migration runs once, not on every load
+    const raw = await AsyncStorage.getItem('savedColors.v1');
+    const stored = JSON.parse(raw!);
+    expect(stored[0].rgb).toEqual(hexToRgb('#C8B4A0'));
+    expect(stored[0].lab).toBeDefined();
+  });
+
+  it('withColourData leaves complete entries untouched', () => {
+    const complete = withColourData(entry({ hex: '#4CAF50' }) as SavedColorEntry);
+    expect(withColourData(complete)).toBe(complete);
+  });
+
+  it('matches recomputed from a migrated entry equal the hex-derived ones', async () => {
+    await AsyncStorage.setItem('savedColors.v1', JSON.stringify([entry({ hex: '#8CA082' })]));
+    const [migrated] = await loadSavedColors();
+    const fromEntry = matchPaintsLab(migrated.lab!, 5);
+    const fromHex = matchPaintsLab(rgbToLab(...hexToRgb('#8CA082')), 5);
+    expect(fromEntry.map(m => m.paint.hex)).toEqual(fromHex.map(m => m.paint.hex));
+    expect(fromEntry).toHaveLength(5);
   });
 });

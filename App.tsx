@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { Platform, View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import CameraScreen from './src/screens/CameraScreen';
-import MatchesScreen from './src/screens/MatchesScreen';
-import SavedScreen from './src/screens/SavedScreen';
+import MyColoursScreen from './src/screens/MyColoursScreen';
 
 interface State {
   hasError: boolean;
@@ -32,15 +31,14 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, State
   }
 }
 
-// Palettes folded into Matches and Saved (CD-11): the goes-with palette
-// renders with the match results and inside each saved colour, so the
-// separate tab is gone.
-type TabKey = 'scan' | 'matches' | 'saved';
+// Matches and Saved merged into My Colours (CD-13): one card per capture
+// — live scan on top, saved captures below, each with filterable matches
+// and its goes-with palette.
+type TabKey = 'scan' | 'colours';
 
 const TABS: { key: TabKey; icon: string; label: string }[] = [
   { key: 'scan', icon: '🎯', label: 'Scan' },
-  { key: 'matches', icon: '🎨', label: 'Matches' },
-  { key: 'saved', icon: '💾', label: 'Saved' },
+  { key: 'colours', icon: '🎨', label: 'My Colours' },
 ];
 
 // Inactive tabs unmount entirely: that stops the camera scan loop when
@@ -51,8 +49,7 @@ function TabRoot() {
     <View style={styles.root}>
       <View style={{ flex: 1 }}>
         {tab === 'scan' && <CameraScreen />}
-        {tab === 'matches' && <MatchesScreen />}
-        {tab === 'saved' && <SavedScreen />}
+        {tab === 'colours' && <MyColoursScreen />}
       </View>
       <SafeAreaView style={styles.tabBarSafe}>
         <View style={styles.tabBar}>

@@ -2,10 +2,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 import { BestMatchInfo } from './matchLabel';
+import { hexToRgb, rgbToLab, Lab } from './colorMath';
 
 export interface SavedColorEntry {
   id: string;
   hex: string; // corrected colour (post white-balance)
+  rgb?: [number, number, number]; // stored at save time (CD-13); derived from hex for legacy entries
+  lab?: Lab; // precomputed for match recomputation without a per-render conversion
   name: string;
   emoji: string;
   match: string; // legacy frozen label ("Brand — Name (96%)"), kept so pre-CD-14 entries still render
@@ -13,6 +16,16 @@ export interface SavedColorEntry {
   timestamp: number;
   label?: string; // optional room label, e.g. "Kitchen"
   thumbnailUri?: string; // FileSystem file on native, data URL on web
+}
+
+// CD-13: entries persisted before rgb/lab existed carry only hex. Both are
+// recoverable from it (hex is itself derived from the corrected rgb), so
+// fill them in rather than versioning the storage key.
+export function withColourData(entry: SavedColorEntry): SavedColorEntry {
+  if (entry.rgb && entry.lab) return entry;
+  const rgb = entry.rgb ?? hexToRgb(entry.hex);
+  const lab = entry.lab ?? rgbToLab(rgb[0], rgb[1], rgb[2]);
+  return { ...entry, rgb, lab };
 }
 
 const STORAGE_KEY = 'savedColors.v1';
@@ -36,7 +49,12 @@ export async function loadSavedColors(): Promise<SavedColorEntry[]> {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(e => e && typeof e.id === 'string') : [];
+    if (!Array.isArray(parsed)) return [];
+    const entries: SavedColorEntry[] = parsed.filter(e => e && typeof e.id === 'string');
+    // Lazy migration: persist rgb/lab for legacy entries on first load.
+    const migrated = entries.map(withColourData);
+    if (migrated.some((e, i) => e !== entries[i])) await persist(migrated);
+    return migrated;
   } catch {
     return [];
   }
@@ -79,7 +97,7 @@ export async function addSavedColor(
   const current = await loadSavedColors();
   const dropped = current.slice(MAX_SAVED - 1);
   for (const old of dropped) void deleteThumbnail(old);
-  const next = [{ ...entry, thumbnailUri }, ...current.slice(0, MAX_SAVED - 1)];
+  const next = [withColourData({ ...entry, thumbnailUri }), ...current.slice(0, MAX_SAVED - 1)];
   await persist(next);
   return next;
 }

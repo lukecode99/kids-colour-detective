@@ -205,7 +205,7 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
           matches: matchPaintsLab(rgbToLab(r, g, b), 5, candidates),
           r, g, b,
         });
-        // Feed the Matches / Palettes tabs.
+        // Feed the My Colours tab.
         setCurrentColour({ rgb: [r, g, b], hex: info.hex, name: info.name });
       } catch {}
     }, SCAN_INTERVAL_MS);
@@ -344,7 +344,7 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
           <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginLeft: 8 }}>tap to save</Text>
         </View>
         <Text style={styles.scanHintLine}>
-          All matches, filters &amp; buy links live in the Matches tab
+          All matches, filters &amp; buy links live in the My Colours tab
         </Text>
       </TouchableOpacity>
     </View>
@@ -418,7 +418,7 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       const info = getColorInfo(r, g, b, true);
       setColorInfo(info);
       setMatches(matchPaintsLab(rgbToLab(r, g, b), 5, candidates));
-      // Feed the Matches / Saved tabs.
+      // Feed the My Colours tab.
       setCurrentColour({ rgb: [r, g, b], hex: info.hex, name: info.name });
     },
     [candidates]
@@ -633,7 +633,7 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
           <Text style={styles.nMatchHex}>{colorInfo.hex}</Text>
         </View>
         <Text style={styles.scanHintLine}>
-          All matches, filters &amp; buy links live in the Matches tab
+          All matches, filters &amp; buy links live in the My Colours tab
         </Text>
       </View>
     </View>
