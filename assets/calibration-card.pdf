@@ -1,0 +1,66 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 1884 >>
+stream
+BT /F2 22 Tf 60 772 Td (Colour Detective - Calibration Card) Tj ET
+BT /F1 11 Tf 60 750 Td (Print on plain white paper at 100% scale \(no "fit to page"\).) Tj ET
+1.0000 1.0000 1.0000 rg 0.6 0.6 0.6 RG 0.75 w 60 442 475 260 re B
+BT /F2 13 Tf 70 678 Td (1. White reference) Tj ET
+BT /F1 11 Tf 70 658 Td (Hold this white area so it fills the crosshair, in the same light) Tj ET
+BT /F1 11 Tf 70 642 Td (as the wall you want to scan.) Tj ET
+BT /F1 11 Tf 70 626 Td (2. In the app, tap the white-card button, then "Lock white".) Tj ET
+BT /F1 11 Tf 70 610 Td (3. Point back at your wall - readings are now corrected for the) Tj ET
+BT /F1 11 Tf 70 594 Td (   room lighting.) Tj ET
+BT /F2 13 Tf 60 408 Td (Check patches) Tj ET
+BT /F1 10 Tf 60 390 Td (After locking white, scan each patch - the app should read close to the printed value.) Tj ET
+1.0000 1.0000 1.0000 rg 0.6 0.6 0.6 RG 0.75 w 60 312 70 62 re B
+BT /F2 9 Tf 60 298 Td (White) Tj ET
+BT /F1 8 Tf 60 286 Td (#FFFFFF) Tj ET
+0.5020 0.5020 0.5020 rg 0.6 0.6 0.6 RG 0.75 w 141 312 70 62 re B
+BT /F2 9 Tf 141 298 Td (Grey) Tj ET
+BT /F1 8 Tf 141 286 Td (#808080) Tj ET
+0.7765 0.1569 0.1569 rg 0.6 0.6 0.6 RG 0.75 w 222 312 70 62 re B
+BT /F2 9 Tf 222 298 Td (Red) Tj ET
+BT /F1 8 Tf 222 286 Td (#C62828) Tj ET
+0.1804 0.4902 0.1961 rg 0.6 0.6 0.6 RG 0.75 w 303 312 70 62 re B
+BT /F2 9 Tf 303 298 Td (Green) Tj ET
+BT /F1 8 Tf 303 286 Td (#2E7D32) Tj ET
+0.0824 0.3961 0.7529 rg 0.6 0.6 0.6 RG 0.75 w 384 312 70 62 re B
+BT /F2 9 Tf 384 298 Td (Blue) Tj ET
+BT /F1 8 Tf 384 286 Td (#1565C0) Tj ET
+0.9765 0.6588 0.1451 rg 0.6 0.6 0.6 RG 0.75 w 465 312 70 62 re B
+BT /F2 9 Tf 465 298 Td (Yellow) Tj ET
+BT /F1 8 Tf 465 286 Td (#F9A825) Tj ET
+BT /F1 10 Tf 60 252 Td (Tip: printed colours vary between printers - the white and grey areas matter most.) Tj ET
+BT /F1 10 Tf 60 237 Td (Keep the card flat and avoid shadows or glare while calibrating.) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000251 00000 n 
+0000002186 00000 n 
+0000002256 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+2331
+%%EOF
