@@ -25,8 +25,8 @@ if (Platform.OS !== 'web') {
 
 import { getColorInfo, ColorInfo } from '../utils/colorNames';
 import { extractPixelFromPng, extractAllPixelsFromPng } from '../utils/pngPixel';
+import { matchPaints, PaintMatch } from '../utils/paintMatcher';
 import { COLORS, FONTS } from '../theme';
-import duluxColours from '../utils/duluxColours.json';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -47,7 +47,7 @@ interface WhiteRef {
 
 interface SavedColor {
   info: ColorInfo;
-  dulux: string;
+  match: string;
 }
 
 function findWhiteRegion(pixels: [number, number, number][][]): WhiteRef | null {
@@ -71,21 +71,34 @@ function findWhiteRegion(pixels: [number, number, number][][]): WhiteRef | null 
   return bestScore >= 150 ? best : null;
 }
 
-const duluxData = duluxColours as [string, number, number, number][];
+function bestMatchLabel(matches: PaintMatch[]): string {
+  const m = matches[0];
+  return m ? `${m.paint.brand} — ${m.paint.name} (${m.matchPercent}%)` : '';
+}
 
-function findNearestDulux(r: number, g: number, b: number): string {
-  let bestDist = Infinity;
-  let bestName = '';
-  for (const [name, dr, dg, db] of duluxData) {
-    const dist = (r - dr) ** 2 + (g - dg) ** 2 + (b - db) ** 2;
-    if (dist < bestDist) { bestDist = dist; bestName = name; }
-  }
-  return bestName;
+// Shared top-5 list rendered in paint mode on both platforms.
+function MatchList({ matches }: { matches: PaintMatch[] }) {
+  if (!matches.length) return null;
+  return (
+    <View style={styles.matchList}>
+      {matches.map((m, i) => (
+        <View key={`${m.paint.brand}-${m.paint.name}-${i}`} style={styles.matchListRow}>
+          <View style={[styles.matchListSwatch, { backgroundColor: m.paint.hex }]} />
+          <Text style={styles.matchListName} numberOfLines={1}>
+            {m.paint.brand} · {m.paint.name}
+          </Text>
+          <Text style={styles.matchListPct}>
+            {m.matchPercent}% · {m.closeness}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
 }
 
 interface WebColorState {
   info: ColorInfo;
-  dulux: string;
+  matches: PaintMatch[];
   r: number; g: number; b: number;
 }
 
@@ -94,7 +107,7 @@ function WebCameraScreen() {
   const canvasRef = useRef<any>(null);
   const streamRef = useRef<any>(null);
   const [colorState, setColorState] = useState<WebColorState>({
-    info: { name: 'Detecting…', hex: '#808080', emoji: '🔍' }, dulux: '', r: 128, g: 128, b: 128,
+    info: { name: 'Detecting…', hex: '#808080', emoji: '🔍' }, matches: [], r: 128, g: 128, b: 128,
   });
   const [complexMode, setComplexMode] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
@@ -161,7 +174,7 @@ function WebCameraScreen() {
         ctx.drawImage(video, vw / 2 - sw / 2, vh / 2 - sh / 2, sw, sh, 0, 0, 1, 1);
         const px = ctx.getImageData(0, 0, 1, 1).data;
         const [r, g, b] = [px[0], px[1], px[2]];
-        setColorState({ info: getColorInfo(r, g, b, complexMode), dulux: findNearestDulux(r, g, b), r, g, b });
+        setColorState({ info: getColorInfo(r, g, b, complexMode), matches: matchPaints(r, g, b), r, g, b });
       } catch {}
     }, SCAN_INTERVAL_MS);
     return () => clearInterval(interval);
@@ -183,7 +196,7 @@ function WebCameraScreen() {
     );
   }
 
-  const { info: colorInfo, dulux } = colorState;
+  const { info: colorInfo, matches } = colorState;
 
   if (showSaved) {
     return (
@@ -203,7 +216,7 @@ function WebCameraScreen() {
                 <View style={{ width: 48, height: 48, borderRadius: 10, backgroundColor: sc.info.hex, marginRight: 14 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700' }}>{sc.info.emoji} {sc.info.name}</Text>
-                  <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 2 }}>Dulux: {sc.dulux}</Text>
+                  <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 2 }}>{bestMatchLabel(sc.matches)}</Text>
                   <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 1 }}>{sc.info.hex}</Text>
                 </View>
               </View>
@@ -229,7 +242,7 @@ function WebCameraScreen() {
             <Text style={[FONTS.toggle, styles.toggleText, !complexMode && styles.toggleTextActive]}>Simple</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.togglePill, complexMode && styles.toggleActive]} onPress={() => setComplexMode(true)}>
-            <Text style={[FONTS.toggle, styles.toggleText, complexMode && styles.toggleTextActive]}>Dulux</Text>
+            <Text style={[FONTS.toggle, styles.toggleText, complexMode && styles.toggleTextActive]}>Paints</Text>
           </TouchableOpacity>
           {torchSupported && (
             <>
@@ -262,11 +275,12 @@ function WebCameraScreen() {
               {colorInfo.emoji} {colorInfo.name}
             </Text>
             <Text style={[FONTS.colorNameSub, styles.hexText]}>
-              {complexMode ? `Dulux: ${dulux}` : colorInfo.hex}
+              {complexMode ? bestMatchLabel(matches) : colorInfo.hex}
             </Text>
           </View>
           <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginLeft: 8 }}>tap to save</Text>
         </View>
+        {complexMode && <MatchList matches={matches} />}
       </TouchableOpacity>
     </View>
   );
@@ -287,7 +301,7 @@ function NativeCameraScreen() {
     hex: '#808080',
     emoji: '🔍',
   });
-  const [duluxName, setDuluxName] = useState<string>('');
+  const [matches, setMatches] = useState<PaintMatch[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [complexMode, setComplexMode] = useState(false);
   const [whiteRefEnabled, setWhiteRefEnabled] = useState(false);
@@ -377,7 +391,7 @@ function NativeCameraScreen() {
 
         const info = getColorInfo(r, g, b, complexMode);
         setColorInfo(info);
-        setDuluxName(findNearestDulux(r, g, b));
+        setMatches(matchPaints(r, g, b));
 
         // Stability: track last 5 readings, flag if avg RGB delta > 25
         const hist = rgbHistoryRef.current;
@@ -432,8 +446,8 @@ function NativeCameraScreen() {
   };
 
   const saveColor = useCallback(() => {
-    setSavedColors(prev => [{ info: colorInfo, dulux: duluxName }, ...prev.slice(0, 19)]);
-  }, [colorInfo, duluxName]);
+    setSavedColors(prev => [{ info: colorInfo, match: bestMatchLabel(matches) }, ...prev.slice(0, 19)]);
+  }, [colorInfo, matches]);
 
   if (!permission) {
     return (
@@ -474,7 +488,7 @@ function NativeCameraScreen() {
                   <View style={{ width: 48, height: 48, borderRadius: 10, backgroundColor: sc.info.hex, marginRight: 14 }} />
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700' }}>{sc.info.emoji} {sc.info.name}</Text>
-                    <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 2 }}>Dulux: {sc.dulux}</Text>
+                    <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 2 }}>{sc.match}</Text>
                     <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 1 }}>{sc.info.hex}</Text>
                   </View>
                 </View>
@@ -525,9 +539,13 @@ function NativeCameraScreen() {
       <SafeAreaView style={styles.nTopLeft} pointerEvents="box-none">
         <TouchableOpacity onPress={saveColor} activeOpacity={0.8} style={styles.nColorNameTouchable}>
           <Text style={styles.nColorName} numberOfLines={2}>
-            {colorInfo.emoji} {complexMode ? duluxName : colorInfo.name}
+            {colorInfo.emoji} {complexMode && matches[0] ? matches[0].paint.name : colorInfo.name}
           </Text>
-          <Text style={styles.nColorHex}>{colorInfo.hex}</Text>
+          <Text style={styles.nColorHex}>
+            {complexMode && matches[0]
+              ? `${matches[0].paint.brand} · ${matches[0].matchPercent}% · ${matches[0].closeness}`
+              : colorInfo.hex}
+          </Text>
         </TouchableOpacity>
       </SafeAreaView>
 
@@ -578,7 +596,7 @@ function NativeCameraScreen() {
             style={[styles.nPill, complexMode && styles.nPillActive]}
             onPress={() => setComplexMode(true)}
           >
-            <Text style={[styles.nPillText, complexMode && styles.nPillTextActive]}>Dulux</Text>
+            <Text style={[styles.nPillText, complexMode && styles.nPillTextActive]}>Paints</Text>
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
           <TouchableOpacity
@@ -602,10 +620,13 @@ function NativeCameraScreen() {
         {/* Compact match row */}
         <View style={styles.nMatchRow}>
           <Text style={styles.nMatchName}>
-            {colorInfo.emoji} {complexMode ? duluxName : colorInfo.name}
+            {colorInfo.emoji} {complexMode && matches[0] ? matches[0].paint.name : colorInfo.name}
           </Text>
           <Text style={styles.nMatchHex}>{colorInfo.hex}</Text>
         </View>
+
+        {/* Top-5 paint matches with % */}
+        {complexMode && <MatchList matches={matches} />}
       </View>
     </View>
   );
@@ -757,6 +778,19 @@ const styles = StyleSheet.create({
   nPillTextActive: { color: '#fff' },
 
   nSwatchStrip: { height: 5, width: '100%' },
+
+  // --- Top-5 paint match list (shared) ---
+  matchList: { paddingHorizontal: 20, paddingBottom: 8 },
+  matchListRow: {
+    flexDirection: 'row', alignItems: 'center', paddingVertical: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  matchListSwatch: {
+    width: 18, height: 18, borderRadius: 4, marginRight: 10,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.25)',
+  },
+  matchListName: { flex: 1, color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  matchListPct: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginLeft: 8 },
   nMatchRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6,
