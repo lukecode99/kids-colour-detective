@@ -1,6 +1,13 @@
-import { pointToWheel, wheelToPoint, wheelPickToRgb } from '../colourWheel';
+import {
+  pointToWheel,
+  wheelToPoint,
+  wheelPickToRgb,
+  savedColourMarkers,
+  hitMarker,
+} from '../colourWheel';
 import { buildCombinedView } from '../combinedView';
 import { PAINTS } from '../paintMatcher';
+import type { SavedColorEntry } from '../savedColors';
 
 const RADIUS = 130;
 
@@ -93,5 +100,113 @@ describe('wheel path equals camera path (CD-17 success criteria)', () => {
     expect(wheelView.suggestions.map(s => s.paint.hex)).toEqual(
       cameraView.suggestions.map(s => s.paint.hex)
     );
+  });
+});
+
+// CD-22: saved captures plotted on the wheel from their stored colour data.
+function saved(
+  id: string,
+  rgb: [number, number, number] | undefined,
+  hex: string,
+  label?: string
+): SavedColorEntry {
+  return {
+    id,
+    hex,
+    rgb,
+    name: 'Some Colour',
+    emoji: '🎨',
+    match: '',
+    timestamp: 1720000000000,
+    label,
+  };
+}
+
+describe('saved-colour markers (CD-22 position maths)', () => {
+  it('pure red sits at hue 0° on the rim — the east edge, exactly', () => {
+    const [m] = savedColourMarkers([saved('red', [255, 0, 0], '#FF0000')], RADIUS);
+    expect(m.h).toBeCloseTo(0, 5);
+    expect(m.s).toBeCloseTo(1, 5);
+    expect(m.x).toBeCloseTo(RADIUS * 2, 5);
+    expect(m.y).toBeCloseTo(RADIUS, 5);
+  });
+
+  it('pure green sits at 120° on the rim', () => {
+    const [m] = savedColourMarkers([saved('green', [0, 255, 0], '#00FF00')], RADIUS);
+    expect(m.h).toBeCloseTo(120, 5);
+    expect(m.s).toBeCloseTo(1, 5);
+    expect(m.x).toBeCloseTo(RADIUS + Math.cos((120 * Math.PI) / 180) * RADIUS, 5);
+    expect(m.y).toBeCloseTo(RADIUS + Math.sin((120 * Math.PI) / 180) * RADIUS, 5);
+  });
+
+  it('greys have zero saturation and land dead centre', () => {
+    const [m] = savedColourMarkers([saved('grey', [128, 128, 128], '#808080')], RADIUS);
+    expect(m.s).toBe(0);
+    expect(m.x).toBeCloseTo(RADIUS, 5);
+    expect(m.y).toBeCloseTo(RADIUS, 5);
+  });
+
+  it('marker positions agree with the touch mapping — picking that spot gives the hue back', () => {
+    const [m] = savedColourMarkers([saved('teal', [0, 128, 128], '#008080')], RADIUS);
+    const pick = pointToWheel(m.x, m.y, RADIUS);
+    expect(pick.h).toBeCloseTo(m.h, 3);
+    expect(pick.s).toBeCloseTo(m.s, 3);
+  });
+
+  it('uses the STORED rgb, not a re-derivation from anything else', () => {
+    // deliberately inconsistent hex: position must follow rgb
+    const [m] = savedColourMarkers([saved('x', [255, 0, 0], '#000000')], RADIUS);
+    expect(m.h).toBeCloseTo(0, 5);
+    expect(m.s).toBeCloseTo(1, 5);
+  });
+
+  it('falls back to hex for an entry that skipped rgb migration', () => {
+    const [m] = savedColourMarkers([saved('legacy', undefined, '#FF0000')], RADIUS);
+    expect(m.h).toBeCloseTo(0, 5);
+    expect(m.s).toBeCloseTo(1, 5);
+  });
+
+  it('identifies by room label when set, colour name otherwise', () => {
+    const [kitchen, unlabelled] = savedColourMarkers(
+      [saved('a', [255, 0, 0], '#FF0000', 'Kitchen'), saved('b', [0, 255, 0], '#00FF00')],
+      RADIUS
+    );
+    expect(kitchen.name).toBe('Kitchen');
+    expect(unlabelled.name).toBe('Some Colour');
+  });
+
+  it('zero saved captures → zero markers; deletion drops exactly that marker', () => {
+    expect(savedColourMarkers([], RADIUS)).toEqual([]);
+    const entries = [saved('a', [255, 0, 0], '#FF0000'), saved('b', [0, 255, 0], '#00FF00')];
+    const before = savedColourMarkers(entries, RADIUS);
+    expect(before).toHaveLength(2);
+    const after = savedColourMarkers(entries.filter(e => e.id !== 'a'), RADIUS);
+    expect(after).toHaveLength(1);
+    expect(after.find(m => m.id === 'a')).toBeUndefined();
+  });
+});
+
+describe('marker tap detection (hitMarker)', () => {
+  const markers = savedColourMarkers(
+    [saved('red', [255, 0, 0], '#FF0000', 'Hall'), saved('grey', [128, 128, 128], '#808080')],
+    RADIUS
+  );
+
+  it('a tap on a marker identifies that capture', () => {
+    const red = markers[0];
+    expect(hitMarker(red.x + 3, red.y - 2, markers)?.id).toBe('red');
+  });
+
+  it('a tap away from any marker falls through to the normal wheel pick', () => {
+    expect(hitMarker(RADIUS * 0.5, RADIUS * 1.5, markers)).toBeNull();
+  });
+
+  it('overlapping markers resolve to the nearest one', () => {
+    const twins = savedColourMarkers(
+      [saved('a', [255, 0, 0], '#FF0000'), saved('b', [254, 1, 1], '#FE0101')],
+      RADIUS
+    );
+    const nearest = hitMarker(twins[1].x, twins[1].y, twins);
+    expect(nearest?.id).toBe('b');
   });
 });

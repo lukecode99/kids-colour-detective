@@ -2,7 +2,8 @@
 // where the angle from centre is hue (0° = east, clockwise) and the
 // distance from centre is saturation. Pure maths so the touch → colour
 // mapping is unit-testable without the UI.
-import { hslToRgb } from './colorMath';
+import { hslToRgb, rgbToHsl, hexToRgb } from './colorMath';
+import type { SavedColorEntry } from './savedColors';
 
 export interface WheelPick {
   h: number; // hue, degrees in [0, 360)
@@ -34,4 +35,53 @@ export function wheelToPoint(h: number, s: number, radius: number): { x: number;
 // same hslToRgb the harmony pipeline uses.
 export function wheelPickToRgb(pick: WheelPick, lightness: number): [number, number, number] {
   return hslToRgb(pick.h, pick.s, lightness);
+}
+
+// ---------------------------------------------------------------------------
+// CD-22: saved captures plotted on the wheel. Each marker sits at the hue
+// angle / saturation radius of the capture's stored colour (rgb from the
+// CD-13 schema; hex only for anything that somehow skipped migration), so
+// the dot lands exactly where picking that colour by hand would.
+
+export interface SavedMarker {
+  id: string;
+  hex: string; // the capture's own colour — the marker is painted with it
+  name: string; // room label when set, else the colour name
+  h: number;
+  s: number;
+  x: number;
+  y: number;
+}
+
+export function savedColourMarkers(
+  entries: SavedColorEntry[],
+  radius: number
+): SavedMarker[] {
+  return entries.map(e => {
+    const [r, g, b] = e.rgb ?? hexToRgb(e.hex);
+    const [h, s] = rgbToHsl(r, g, b);
+    const { x, y } = wheelToPoint(h, s, radius);
+    return { id: e.id, hex: e.hex, name: e.label || e.name, h, s, x, y };
+  });
+}
+
+// Which marker (if any) a touch lands on: nearest within the threshold, so
+// overlapping markers resolve to the closest one instead of breaking. A miss
+// returns null and the touch falls through to the normal wheel pick.
+export function hitMarker(
+  x: number,
+  y: number,
+  markers: SavedMarker[],
+  threshold = 16
+): SavedMarker | null {
+  let best: SavedMarker | null = null;
+  let bestD = threshold;
+  for (const m of markers) {
+    const d = Math.hypot(m.x - x, m.y - y);
+    if (d <= bestD) {
+      best = m;
+      bestD = d;
+    }
+  }
+  return best;
 }

@@ -2,7 +2,9 @@
 // instead of capturing one — no camera. The picked colour feeds the exact
 // same pipeline as a scan: buildCombinedView gives the filtered matches,
 // room scheme and goes-with groups, rendered with the shared components.
-import React, { useState, useMemo, useRef, useCallback } from 'react';
+// CD-22: saved captures appear as markers on the wheel at their stored
+// colour's hue/saturation position; tapping one names it.
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -14,9 +16,18 @@ import {
 } from 'react-native';
 
 import { hslToRgb, rgbToHex, rgbToHsl, hexToRgb } from '../utils/colorMath';
-import { pointToWheel, wheelToPoint, wheelPickToRgb, WheelPick } from '../utils/colourWheel';
+import {
+  pointToWheel,
+  wheelToPoint,
+  wheelPickToRgb,
+  WheelPick,
+  savedColourMarkers,
+  hitMarker,
+  SavedMarker,
+} from '../utils/colourWheel';
 import { buildCombinedView } from '../utils/combinedView';
 import { getColorInfo } from '../utils/colorNames';
+import { loadSavedColors, SavedColorEntry } from '../utils/savedColors';
 import { Paint } from '../utils/paintMatcher';
 import PaletteIdeas from '../components/PaletteIdeas';
 import CoverageCalculator from '../components/CoverageCalculator';
@@ -78,6 +89,19 @@ export default function WheelScreen() {
   const latest = useRef({ pick, lightness });
   latest.current = { pick, lightness };
 
+  // CD-22: saved captures as wheel markers. The tab unmounts when it loses
+  // focus (App.tsx TabRoot), so loading on mount also refreshes after a
+  // capture is saved or deleted elsewhere.
+  const [savedColors, setSavedColors] = useState<SavedColorEntry[]>([]);
+  const [activeMarker, setActiveMarker] = useState<SavedMarker | null>(null);
+  useEffect(() => {
+    loadSavedColors().then(setSavedColors);
+  }, []);
+  const markers = useMemo(() => savedColourMarkers(savedColors, RADIUS), [savedColors]);
+  // The PanResponder is created once — it reads markers through a ref.
+  const markersRef = useRef(markers);
+  markersRef.current = markers;
+
   const commit = useCallback((force: boolean) => {
     const now = Date.now();
     if (!force && now - lastRecompute.current < RECOMPUTE_MS) return;
@@ -91,6 +115,9 @@ export default function WheelScreen() {
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: evt => {
         const { locationX, locationY } = evt.nativeEvent;
+        // A touch on a saved-colour marker identifies that capture; the
+        // pick still moves there, so drags behave exactly as before.
+        setActiveMarker(hitMarker(locationX, locationY, markersRef.current));
         latest.current.pick = pointToWheel(locationX, locationY, RADIUS);
         setPick(latest.current.pick);
         commit(false);
@@ -171,6 +198,17 @@ export default function WheelScreen() {
           <View style={styles.wheelWrap}>
             <View style={styles.wheel} {...wheelResponder.panHandlers}>
               <WheelDots />
+              {markers.map(m => (
+                <View
+                  key={m.id}
+                  pointerEvents="none"
+                  style={[
+                    styles.marker,
+                    { left: m.x - 7, top: m.y - 7, backgroundColor: m.hex },
+                    activeMarker?.id === m.id && styles.markerActive,
+                  ]}
+                />
+              ))}
               <View
                 pointerEvents="none"
                 style={[
@@ -179,6 +217,11 @@ export default function WheelScreen() {
                 ]}
               />
             </View>
+            {activeMarker && (
+              <Text style={styles.markerInfo}>
+                📍 {activeMarker.name} · {activeMarker.hex.toUpperCase()}
+              </Text>
+            )}
           </View>
 
           <View style={styles.sliderRow}>
@@ -271,6 +314,19 @@ const styles = StyleSheet.create({
     borderWidth: 3, borderColor: '#fff',
     shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 4, shadowOffset: { width: 0, height: 1 },
     elevation: 4,
+  },
+  // Saved-capture markers (CD-22): smaller than the knob, white-ringed so
+  // they read as "yours" against the borderless reference dots.
+  marker: {
+    position: 'absolute', width: 14, height: 14, borderRadius: 7,
+    borderWidth: 2, borderColor: '#fff',
+    shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
+  },
+  markerActive: { borderColor: COLORS.accent, transform: [{ scale: 1.3 }] },
+  markerInfo: {
+    color: COLORS.text, fontSize: 13, fontWeight: '700',
+    marginTop: 8, textAlign: 'center',
   },
   sliderRow: {
     flexDirection: 'row', alignItems: 'center',
