@@ -32,6 +32,7 @@ import {
   FilterEmptyNotice,
   usePaintFilters,
 } from '../components/paintMatchUI';
+import { setCurrentColour } from '../utils/currentColour';
 import { COLORS } from '../theme';
 
 const LOUPE_SIZE = 120;
@@ -159,11 +160,14 @@ export default function PhotoPickerScreen({ onClose }: { onClose: () => void }) 
     try {
       const rgb = await sampleMedianAt(p.uri, p.width, p.height, coords.x, coords.y);
       const [r, g, b] = rgb;
+      const info = getColorInfo(r, g, b, true);
       setSample({
         rgb,
-        info: getColorInfo(r, g, b, true),
+        info,
         matches: matchPaintsLab(rgbToLab(r, g, b), 5, candidatesRef.current),
       });
+      // Feed the Matches / Palettes tabs.
+      setCurrentColour({ rgb, hex: info.hex, name: info.name });
     } catch {
       // keep the previous sample; the loupe still shows where they tapped
     } finally {

@@ -8,9 +8,6 @@ import {
   Dimensions,
   SafeAreaView,
   Platform,
-  ScrollView,
-  TextInput,
-  Image,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
@@ -39,25 +36,10 @@ import {
   isPlausibleWhiteRef,
   lightingHint,
 } from '../utils/scanQuality';
-import {
-  bestMatchLabel,
-  MatchList,
-  FiltersPanel,
-  FilterToggleLine,
-  FilterEmptyNotice,
-  activeFilterCount,
-  usePaintFilters,
-} from '../components/paintMatchUI';
+import { bestMatchLabel, usePaintFilters } from '../components/paintMatchUI';
 import PhotoPickerScreen from './PhotoPickerScreen';
-import PaletteIdeas from '../components/PaletteIdeas';
-import {
-  SavedColorEntry,
-  loadSavedColors,
-  addSavedColor,
-  removeSavedColor,
-  setSavedColorLabel,
-  newSavedColorId,
-} from '../utils/savedColors';
+import { addSavedColor, newSavedColorId } from '../utils/savedColors';
+import { setCurrentColour } from '../utils/currentColour';
 import { COLORS, FONTS } from '../theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -127,130 +109,6 @@ function CalibrationOverlay({
   );
 }
 
-// Loads the persisted saved-colours list and exposes mutators that keep
-// storage and state in sync.
-function useSavedColors() {
-  const [savedColors, setSavedColors] = useState<SavedColorEntry[]>([]);
-
-  useEffect(() => {
-    loadSavedColors().then(setSavedColors);
-  }, []);
-
-  const save = useCallback(
-    (entry: Omit<SavedColorEntry, 'thumbnailUri'>, tempThumbnailUri?: string) => {
-      addSavedColor(entry, tempThumbnailUri).then(setSavedColors);
-    },
-    []
-  );
-  const remove = useCallback((id: string) => {
-    removeSavedColor(id).then(setSavedColors);
-  }, []);
-  const setLabel = useCallback((id: string, label: string) => {
-    setSavedColorLabel(id, label).then(setSavedColors);
-  }, []);
-
-  return { savedColors, save, remove, setLabel };
-}
-
-function formatTimestamp(ts: number): string {
-  const d = new Date(ts);
-  return (
-    d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) +
-    ', ' +
-    d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-  );
-}
-
-function SavedColorRow({
-  sc,
-  onRemove,
-  onLabel,
-}: {
-  sc: SavedColorEntry;
-  onRemove: (id: string) => void;
-  onLabel: (id: string, label: string) => void;
-}) {
-  const [label, setLabel] = useState(sc.label ?? '');
-  const [showIdeas, setShowIdeas] = useState(false);
-  const commit = () => onLabel(sc.id, label);
-  return (
-    <View style={styles.savedRow}>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        {sc.thumbnailUri ? (
-          <Image source={{ uri: sc.thumbnailUri }} style={styles.savedThumb} />
-        ) : (
-          <View style={[styles.savedThumb, { backgroundColor: sc.hex }]} />
-        )}
-        <View style={[styles.savedSwatchBar, { backgroundColor: sc.hex }]} />
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: COLORS.text, fontSize: 17, fontWeight: '700' }}>
-            {sc.emoji} {sc.name}
-          </Text>
-          {!!sc.match && (
-            <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 2 }}>{sc.match}</Text>
-          )}
-          <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 1 }}>
-            {sc.hex} · {formatTimestamp(sc.timestamp)}
-          </Text>
-          <TextInput
-            style={styles.savedLabelInput}
-            placeholder="Add room label…"
-            placeholderTextColor="rgba(255,255,255,0.3)"
-            value={label}
-            onChangeText={setLabel}
-            onBlur={commit}
-            onSubmitEditing={commit}
-            returnKeyType="done"
-          />
-          <TouchableOpacity onPress={() => setShowIdeas(v => !v)} hitSlop={{ top: 6, bottom: 6 }}>
-            <Text style={styles.ideasToggle}>
-              {showIdeas ? '▾' : '▸'} 🎨 Goes-with paints
-            </Text>
-          </TouchableOpacity>
-        </View>
-        <TouchableOpacity onPress={() => onRemove(sc.id)} style={styles.savedDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={{ color: COLORS.textMuted, fontSize: 16 }}>✕</Text>
-        </TouchableOpacity>
-      </View>
-      {showIdeas && <PaletteIdeas hex={sc.hex} />}
-    </View>
-  );
-}
-
-function SavedColorsScreen({
-  entries,
-  onBack,
-  onRemove,
-  onLabel,
-}: {
-  entries: SavedColorEntry[];
-  onBack: () => void;
-  onRemove: (id: string) => void;
-  onLabel: (id: string, label: string) => void;
-}) {
-  return (
-    <View style={[styles.container, { backgroundColor: COLORS.bg }]}>
-      <SafeAreaView style={{ flex: 1, paddingTop: Platform.OS === 'web' ? 48 : 0 }}>
-        <View style={styles.savedHeader}>
-          <TouchableOpacity onPress={onBack} style={{ marginRight: 12 }}>
-            <Text style={{ color: COLORS.accent, fontSize: 28 }}>←</Text>
-          </TouchableOpacity>
-          <Text style={{ color: COLORS.text, fontSize: 22, fontWeight: '800' }}>Saved Colours</Text>
-        </View>
-        {entries.length === 0 ? (
-          <Text style={styles.savedEmpty}>No colours saved yet</Text>
-        ) : (
-          <ScrollView keyboardShouldPersistTaps="handled">
-            {entries.map(sc => (
-              <SavedColorRow key={sc.id} sc={sc} onRemove={onRemove} onLabel={onLabel} />
-            ))}
-          </ScrollView>
-        )}
-      </SafeAreaView>
-    </View>
-  );
-}
-
 interface WebColorState {
   info: ColorInfo;
   matches: PaintMatch[];
@@ -264,16 +122,12 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   const [colorState, setColorState] = useState<WebColorState>({
     info: { name: 'Detecting…', hex: '#808080', emoji: '🔍' }, matches: [], r: 128, g: 128, b: 128,
   });
-  const [complexMode, setComplexMode] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
-  const [showSaved, setShowSaved] = useState(false);
   const [camError, setCamError] = useState<string | null>(null);
-  const [showFilters, setShowFilters] = useState(false);
   const [whiteRefMode, setWhiteRefMode] = useState<WhiteRefMode>('off');
   const [rawRgb, setRawRgb] = useState<Rgb>([128, 128, 128]);
-  const { filters, onToggle: onToggleFilter, candidates } = usePaintFilters();
-  const { savedColors, save, remove, setLabel } = useSavedColors();
+  const { candidates } = usePaintFilters();
 
   const historyRef = useRef<Rgb[]>([]);
   const rawRgbRef = useRef<Rgb>([128, 128, 128]);
@@ -356,15 +210,18 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         if (whiteRefModeRef.current === 'locked' && whiteRefValueRef.current) {
           [r, g, b] = applyWhiteRef([r, g, b], whiteRefValueRef.current);
         }
+        const info = getColorInfo(r, g, b, true);
         setColorState({
-          info: getColorInfo(r, g, b, complexMode),
+          info,
           matches: matchPaintsLab(rgbToLab(r, g, b), 5, candidates),
           r, g, b,
         });
+        // Feed the Matches / Palettes tabs.
+        setCurrentColour({ rgb: [r, g, b], hex: info.hex, name: info.name });
       } catch {}
     }, SCAN_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [complexMode, candidates]);
+  }, [candidates]);
 
   const handleWhiteRefPress = useCallback(() => {
     setWhiteRefMode(mode => {
@@ -401,7 +258,7 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
           }
         }
       } catch {}
-      save(
+      addSavedColor(
         {
           id: newSavedColorId(),
           hex: cs.info.hex,
@@ -414,7 +271,7 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       );
       return cs;
     });
-  }, [save]);
+  }, []);
 
   if (camError) {
     return (
@@ -427,17 +284,6 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
 
   const { info: colorInfo, matches } = colorState;
 
-  if (showSaved) {
-    return (
-      <SavedColorsScreen
-        entries={savedColors}
-        onBack={() => setShowSaved(false)}
-        onRemove={remove}
-        onLabel={setLabel}
-      />
-    );
-  }
-
   return (
     <View style={styles.container}>
       {React.createElement('video', {
@@ -449,21 +295,14 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
 
       <SafeAreaView style={styles.topOverlay} pointerEvents="box-none">
         <View style={styles.toggleContainer}>
-          <TouchableOpacity style={[styles.togglePill, !complexMode && styles.toggleActive]} onPress={() => setComplexMode(false)}>
-            <Text style={[FONTS.toggle, styles.toggleText, !complexMode && styles.toggleTextActive]}>Simple</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.togglePill, complexMode && styles.toggleActive]} onPress={() => setComplexMode(true)}>
-            <Text style={[FONTS.toggle, styles.toggleText, complexMode && styles.toggleTextActive]}>Paints</Text>
-          </TouchableOpacity>
           {torchSupported && (
             <>
-              <View style={styles.toggleDivider} />
               <TouchableOpacity style={[styles.togglePill, torchOn && styles.toggleActiveRef]} onPress={toggleTorch}>
                 <Text style={[FONTS.toggle, styles.toggleText, torchOn && styles.toggleTextActive]}>🔦</Text>
               </TouchableOpacity>
+              <View style={styles.toggleDivider} />
             </>
           )}
-          <View style={styles.toggleDivider} />
           <TouchableOpacity
             style={[styles.togglePill, whiteRefMode !== 'off' && styles.toggleActiveRef]}
             onPress={handleWhiteRefPress}
@@ -474,11 +313,7 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
           </TouchableOpacity>
           <View style={styles.toggleDivider} />
           <TouchableOpacity style={styles.togglePill} onPress={onOpenPhoto}>
-            <Text style={[FONTS.toggle, styles.toggleText]}>🖼</Text>
-          </TouchableOpacity>
-          <View style={styles.toggleDivider} />
-          <TouchableOpacity style={styles.togglePill} onPress={() => setShowSaved(true)}>
-            <Text style={[FONTS.toggle, styles.toggleText]}>💾 {savedColors.length > 0 ? savedColors.length : ''}</Text>
+            <Text style={[FONTS.toggle, styles.toggleText]}>🖼 Photo</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -509,27 +344,23 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         })()}
         <View style={styles.colorInfoRow}>
           <View style={styles.colorTextBlock}>
-            <Text style={[FONTS.colorName, styles.colorNameText]}>
-              {colorInfo.emoji} {colorInfo.name}
+            <Text style={[FONTS.colorName, styles.colorNameText]} numberOfLines={2}>
+              {matches[0] ? matches[0].paint.name : colorInfo.name}
             </Text>
             <Text style={[FONTS.colorNameSub, styles.hexText]}>
-              {complexMode ? bestMatchLabel(matches) : colorInfo.hex}
+              {matches[0]
+                ? `${matches[0].paint.brand} · ${matches[0].matchPercent}% match · ${matches[0].closeness}`
+                : colorInfo.hex}
+            </Text>
+            <Text style={styles.scanSubLine}>
+              {colorInfo.name} · {colorInfo.hex}
             </Text>
           </View>
           <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginLeft: 8 }}>tap to save</Text>
         </View>
-        {complexMode && (
-          <>
-            <FilterToggleLine
-              filters={filters}
-              candidateCount={candidates.length}
-              expanded={showFilters}
-              onPress={() => setShowFilters(s => !s)}
-            />
-            {showFilters && <FiltersPanel filters={filters} onToggle={onToggleFilter} />}
-            {candidates.length === 0 ? <FilterEmptyNotice /> : <MatchList matches={matches} />}
-          </>
-        )}
+        <Text style={styles.scanHintLine}>
+          All matches, filters &amp; buy links live in the Matches tab
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -555,15 +386,11 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   });
   const [matches, setMatches] = useState<PaintMatch[]>([]);
   const [isScanning, setIsScanning] = useState(false);
-  const [complexMode, setComplexMode] = useState(false);
   const [whiteRefMode, setWhiteRefMode] = useState<WhiteRefMode>('off');
   const [rawRgb, setRawRgb] = useState<Rgb>([128, 128, 128]);
   const [torchOn, setTorchOn] = useState(false);
-  const [showSaved, setShowSaved] = useState(false);
   const [isUnstable, setIsUnstable] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
-  const { filters, onToggle: onToggleFilter, candidates } = usePaintFilters();
-  const { savedColors, save, remove, setLabel } = useSavedColors();
+  const { candidates } = usePaintFilters();
 
   const cameraRef = useRef<any>(null);
   const scanningRef = useRef(false);
@@ -653,8 +480,11 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
           [r, g, b] = applyWhiteRef([r, g, b], whiteRefValueRef.current);
         }
 
-        setColorInfo(getColorInfo(r, g, b, complexMode));
+        const info = getColorInfo(r, g, b, true);
+        setColorInfo(info);
         setMatches(matchPaintsLab(rgbToLab(r, g, b), 5, candidates));
+        // Feed the Matches / Palettes tabs.
+        setCurrentColour({ rgb: [r, g, b], hex: info.hex, name: info.name });
       }
     } catch {
       // Silently continue
@@ -662,7 +492,7 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       scanningRef.current = false;
       setIsScanning(false);
     }
-  }, [complexMode, candidates]);
+  }, [candidates]);
 
   useEffect(() => {
     const interval = setInterval(scanColor, SCAN_INTERVAL_MS);
@@ -698,7 +528,7 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         thumb = t.uri;
       } catch {}
     }
-    save(
+    addSavedColor(
       {
         id: newSavedColorId(),
         hex: colorInfo.hex,
@@ -709,7 +539,7 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       },
       thumb
     );
-  }, [colorInfo, matches, save]);
+  }, [colorInfo, matches]);
 
   if (!permission) {
     return (
@@ -723,22 +553,13 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
     return (
       <View style={styles.centered}>
         <Text style={styles.permTitle}>📷 Camera Access Needed</Text>
-        <Text style={styles.permText}>We need the camera to detect colours around you!</Text>
+        <Text style={styles.permText}>
+          Point the camera at any wall or surface and we'll find the closest matching paint.
+        </Text>
         <TouchableOpacity style={styles.permButton} onPress={requestPermission}>
           <Text style={styles.permButtonText}>Allow Camera</Text>
         </TouchableOpacity>
       </View>
-    );
-  }
-
-  if (showSaved) {
-    return (
-      <SavedColorsScreen
-        entries={savedColors}
-        onBack={() => setShowSaved(false)}
-        onRemove={remove}
-        onLabel={setLabel}
-      />
     );
   }
 
@@ -753,10 +574,10 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       <SafeAreaView style={styles.nTopLeft} pointerEvents="box-none">
         <TouchableOpacity onPress={saveColor} activeOpacity={0.8} style={styles.nColorNameTouchable}>
           <Text style={styles.nColorName} numberOfLines={2}>
-            {colorInfo.emoji} {complexMode && matches[0] ? matches[0].paint.name : colorInfo.name}
+            {matches[0] ? matches[0].paint.name : colorInfo.name}
           </Text>
           <Text style={styles.nColorHex}>
-            {complexMode && matches[0]
+            {matches[0]
               ? `${matches[0].paint.brand} · ${matches[0].matchPercent}% · ${matches[0].closeness}`
               : colorInfo.hex}
           </Text>
@@ -807,30 +628,8 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
 
       {/* Bottom slim panel */}
       <View style={styles.nBottomPanel}>
-        {/* Controls: Simple/Dulux + White Ref + Saved */}
+        {/* Controls: White Ref + Photo */}
         <View style={styles.nControlRow}>
-          <TouchableOpacity
-            style={[styles.nPill, !complexMode && styles.nPillActive]}
-            onPress={() => setComplexMode(false)}
-          >
-            <Text style={[styles.nPillText, !complexMode && styles.nPillTextActive]}>Simple</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.nPill, complexMode && styles.nPillActive]}
-            onPress={() => setComplexMode(true)}
-          >
-            <Text style={[styles.nPillText, complexMode && styles.nPillTextActive]}>Paints</Text>
-          </TouchableOpacity>
-          {complexMode && (
-            <TouchableOpacity
-              style={[styles.nPill, showFilters && styles.nPillActive]}
-              onPress={() => setShowFilters(s => !s)}
-            >
-              <Text style={[styles.nPillText, showFilters && styles.nPillTextActive]}>
-                ⚙{activeFilterCount(filters) > 0 ? ` ${activeFilterCount(filters)}` : ''}
-              </Text>
-            </TouchableOpacity>
-          )}
           <View style={{ flex: 1 }} />
           <TouchableOpacity
             style={[styles.nPill, whiteRefMode !== 'off' && styles.nPillActiveRef]}
@@ -841,12 +640,7 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.nPill} onPress={onOpenPhoto}>
-            <Text style={styles.nPillText}>🖼</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.nPill} onPress={() => setShowSaved(true)}>
-            <Text style={styles.nPillText}>
-              🗂{savedColors.length > 0 ? ` ${savedColors.length}` : ''}
-            </Text>
+            <Text style={styles.nPillText}>🖼 Photo</Text>
           </TouchableOpacity>
         </View>
 
@@ -860,17 +654,16 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
           ) : null;
         })()}
 
-        {/* Compact match row */}
+        {/* Underlying colour, demoted below the paint match */}
         <View style={styles.nMatchRow}>
-          <Text style={styles.nMatchName}>
-            {colorInfo.emoji} {complexMode && matches[0] ? matches[0].paint.name : colorInfo.name}
+          <Text style={styles.nMatchName} numberOfLines={1}>
+            {colorInfo.name}
           </Text>
           <Text style={styles.nMatchHex}>{colorInfo.hex}</Text>
         </View>
-
-        {/* Filter chips + top-5 paint matches with % */}
-        {complexMode && showFilters && <FiltersPanel filters={filters} onToggle={onToggleFilter} />}
-        {complexMode && (candidates.length === 0 ? <FilterEmptyNotice /> : <MatchList matches={matches} />)}
+        <Text style={styles.scanHintLine}>
+          All matches, filters &amp; buy links live in the Matches tab
+        </Text>
       </View>
     </View>
   );
@@ -1047,25 +840,12 @@ const styles = StyleSheet.create({
 
   nSwatchStrip: { height: 5, width: '100%' },
 
-  // --- Saved colours screen (shared) ---
-  savedHeader: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 20, paddingTop: 16, marginBottom: 16,
+  // --- Cross-tab hints (shared) ---
+  scanSubLine: { color: 'rgba(255,255,255,0.4)', fontSize: 14, fontWeight: '600', marginTop: 4 },
+  scanHintLine: {
+    color: 'rgba(255,255,255,0.35)', fontSize: 12, fontWeight: '600',
+    paddingHorizontal: 24, paddingTop: 4, paddingBottom: 2,
   },
-  savedEmpty: { color: COLORS.textMuted, textAlign: 'center', marginTop: 40, fontSize: 16 },
-  savedRow: {
-    paddingHorizontal: 20, paddingVertical: 10,
-    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)',
-  },
-  ideasToggle: { color: COLORS.accent, fontSize: 13, fontWeight: '700', marginTop: 8 },
-  savedThumb: { width: 56, height: 56, borderRadius: 10 },
-  savedSwatchBar: { width: 6, height: 56, borderRadius: 3, marginLeft: 6, marginRight: 12 },
-  savedLabelInput: {
-    color: COLORS.text, fontSize: 13, marginTop: 4,
-    paddingVertical: 2, paddingHorizontal: 0,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.2)',
-  },
-  savedDelete: { paddingLeft: 12, paddingVertical: 8 },
 
   nMatchRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
