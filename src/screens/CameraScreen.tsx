@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -25,7 +25,19 @@ if (Platform.OS !== 'web') {
 
 import { getColorInfo, ColorInfo } from '../utils/colorNames';
 import { extractPixelFromPng, extractAllPixelsFromPng } from '../utils/pngPixel';
-import { matchPaints, PaintMatch } from '../utils/paintMatcher';
+import { matchPaintsLab, PaintMatch, PAINTS } from '../utils/paintMatcher';
+import { rgbToLab } from '../utils/colorMath';
+import {
+  PaintFilters,
+  EMPTY_FILTERS,
+  applyFilters,
+  toggleFilter,
+  loadFilters,
+  saveFilters,
+  BRAND_OPTIONS,
+  SURFACE_OPTIONS,
+  FINISH_OPTIONS,
+} from '../utils/filters';
 import { COLORS, FONTS } from '../theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -96,6 +108,72 @@ function MatchList({ matches }: { matches: PaintMatch[] }) {
   );
 }
 
+const FILTER_GROUPS: { key: keyof PaintFilters; label: string; options: string[] }[] = [
+  { key: 'brands', label: 'Brand', options: BRAND_OPTIONS },
+  { key: 'surfaces', label: 'Surface', options: SURFACE_OPTIONS },
+  { key: 'finishes', label: 'Finish', options: FINISH_OPTIONS },
+];
+
+function activeFilterCount(filters: PaintFilters): number {
+  return filters.brands.length + filters.surfaces.length + filters.finishes.length;
+}
+
+// Chip rows for brand / surface / finish, shared by both platforms.
+function FiltersPanel({
+  filters,
+  onToggle,
+}: {
+  filters: PaintFilters;
+  onToggle: (group: keyof PaintFilters, value: string) => void;
+}) {
+  return (
+    <View style={styles.filterPanel}>
+      {FILTER_GROUPS.map(g => (
+        <View key={g.key} style={styles.filterGroupRow}>
+          <Text style={styles.filterGroupLabel}>{g.label}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {g.options.map(opt => {
+              const active = filters[g.key].includes(opt);
+              return (
+                <TouchableOpacity
+                  key={opt}
+                  style={[styles.filterChip, active && styles.filterChipActive]}
+                  onPress={() => onToggle(g.key, opt)}
+                >
+                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                    {opt}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// Loads persisted filters once and saves on every change.
+function usePaintFilters() {
+  const [filters, setFilters] = useState<PaintFilters>(EMPTY_FILTERS);
+
+  useEffect(() => {
+    loadFilters().then(setFilters);
+  }, []);
+
+  const onToggle = useCallback((group: keyof PaintFilters, value: string) => {
+    setFilters(f => {
+      const next = toggleFilter(f, group, value);
+      saveFilters(next);
+      return next;
+    });
+  }, []);
+
+  const candidates = useMemo(() => applyFilters(PAINTS, filters), [filters]);
+
+  return { filters, onToggle, candidates };
+}
+
 interface WebColorState {
   info: ColorInfo;
   matches: PaintMatch[];
@@ -115,6 +193,8 @@ function WebCameraScreen() {
   const [savedColors, setSavedColors] = useState<WebColorState[]>([]);
   const [showSaved, setShowSaved] = useState(false);
   const [camError, setCamError] = useState<string | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const { filters, onToggle: onToggleFilter, candidates } = usePaintFilters();
 
   const breathScale = useRef(new Animated.Value(1)).current;
 
@@ -174,11 +254,15 @@ function WebCameraScreen() {
         ctx.drawImage(video, vw / 2 - sw / 2, vh / 2 - sh / 2, sw, sh, 0, 0, 1, 1);
         const px = ctx.getImageData(0, 0, 1, 1).data;
         const [r, g, b] = [px[0], px[1], px[2]];
-        setColorState({ info: getColorInfo(r, g, b, complexMode), matches: matchPaints(r, g, b), r, g, b });
+        setColorState({
+          info: getColorInfo(r, g, b, complexMode),
+          matches: matchPaintsLab(rgbToLab(r, g, b), 5, candidates),
+          r, g, b,
+        });
       } catch {}
     }, SCAN_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [complexMode]);
+  }, [complexMode, candidates]);
 
   const saveColor = useCallback(() => {
     setColorState(cs => {
@@ -280,7 +364,22 @@ function WebCameraScreen() {
           </View>
           <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginLeft: 8 }}>tap to save</Text>
         </View>
-        {complexMode && <MatchList matches={matches} />}
+        {complexMode && (
+          <>
+            <TouchableOpacity style={styles.filterToggleRow} onPress={() => setShowFilters(s => !s)}>
+              <Text style={styles.filterToggleText}>
+                {showFilters ? '▾' : '▸'} Filters
+                {activeFilterCount(filters) > 0 ? ` (${activeFilterCount(filters)})` : ''} · {candidates.length} paints
+              </Text>
+            </TouchableOpacity>
+            {showFilters && <FiltersPanel filters={filters} onToggle={onToggleFilter} />}
+            {candidates.length === 0 ? (
+              <Text style={styles.filterEmptyText}>No paints match these filters</Text>
+            ) : (
+              <MatchList matches={matches} />
+            )}
+          </>
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -310,6 +409,8 @@ function NativeCameraScreen() {
   const [savedColors, setSavedColors] = useState<SavedColor[]>([]);
   const [showSaved, setShowSaved] = useState(false);
   const [isUnstable, setIsUnstable] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const { filters, onToggle: onToggleFilter, candidates } = usePaintFilters();
 
   const cameraRef = useRef<any>(null);
   const scanningRef = useRef(false);
@@ -391,7 +492,7 @@ function NativeCameraScreen() {
 
         const info = getColorInfo(r, g, b, complexMode);
         setColorInfo(info);
-        setMatches(matchPaints(r, g, b));
+        setMatches(matchPaintsLab(rgbToLab(r, g, b), 5, candidates));
 
         // Stability: track last 5 readings, flag if avg RGB delta > 25
         const hist = rgbHistoryRef.current;
@@ -429,7 +530,7 @@ function NativeCameraScreen() {
       scanningRef.current = false;
       setIsScanning(false);
     }
-  }, [complexMode, whiteRefEnabled]);
+  }, [complexMode, whiteRefEnabled, candidates]);
 
   useEffect(() => {
     const interval = setInterval(scanColor, SCAN_INTERVAL_MS);
@@ -598,6 +699,16 @@ function NativeCameraScreen() {
           >
             <Text style={[styles.nPillText, complexMode && styles.nPillTextActive]}>Paints</Text>
           </TouchableOpacity>
+          {complexMode && (
+            <TouchableOpacity
+              style={[styles.nPill, showFilters && styles.nPillActive]}
+              onPress={() => setShowFilters(s => !s)}
+            >
+              <Text style={[styles.nPillText, showFilters && styles.nPillTextActive]}>
+                ⚙{activeFilterCount(filters) > 0 ? ` ${activeFilterCount(filters)}` : ''}
+              </Text>
+            </TouchableOpacity>
+          )}
           <View style={{ flex: 1 }} />
           <TouchableOpacity
             style={[styles.nPill, whiteRefEnabled && styles.nPillActiveRef]}
@@ -625,8 +736,14 @@ function NativeCameraScreen() {
           <Text style={styles.nMatchHex}>{colorInfo.hex}</Text>
         </View>
 
-        {/* Top-5 paint matches with % */}
-        {complexMode && <MatchList matches={matches} />}
+        {/* Filter chips + top-5 paint matches with % */}
+        {complexMode && showFilters && <FiltersPanel filters={filters} onToggle={onToggleFilter} />}
+        {complexMode &&
+          (candidates.length === 0 ? (
+            <Text style={styles.filterEmptyText}>No paints match these filters</Text>
+          ) : (
+            <MatchList matches={matches} />
+          ))}
       </View>
     </View>
   );
@@ -778,6 +895,31 @@ const styles = StyleSheet.create({
   nPillTextActive: { color: '#fff' },
 
   nSwatchStrip: { height: 5, width: '100%' },
+
+  // --- Filter chips (shared) ---
+  filterToggleRow: { paddingHorizontal: 24, paddingBottom: 6 },
+  filterToggleText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
+  filterPanel: { paddingBottom: 8 },
+  filterGroupRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingLeft: 20, paddingVertical: 3,
+  },
+  filterGroupLabel: {
+    color: COLORS.textMuted, fontSize: 11, fontWeight: '700',
+    width: 56, textTransform: 'uppercase', letterSpacing: 0.5,
+  },
+  filterChip: {
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)', marginRight: 6,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.2)',
+  },
+  filterChipActive: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
+  filterChipText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
+  filterChipTextActive: { color: '#fff' },
+  filterEmptyText: {
+    color: COLORS.textMuted, fontSize: 13, fontWeight: '600',
+    paddingHorizontal: 20, paddingVertical: 8,
+  },
 
   // --- Top-5 paint match list (shared) ---
   matchList: { paddingHorizontal: 20, paddingBottom: 8 },
