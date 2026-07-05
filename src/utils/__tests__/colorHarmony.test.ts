@@ -5,6 +5,7 @@ import {
   roomScheme,
   Rgb3,
 } from '../colorHarmony';
+import { PAINTS } from '../paintMatcher';
 import { hslToRgb, hexToRgb, rgbToHsl } from '../colorMath';
 
 describe('colour maths helpers', () => {
@@ -89,6 +90,65 @@ describe('harmony suggestions map to real paints (CD-7 SC)', () => {
     const a = harmonySuggestions([200, 180, 160]);
     const b = harmonySuggestions([200, 180, 160]);
     expect(a.map(s => s.paint.hex)).toEqual(b.map(s => s.paint.hex));
+  });
+});
+
+describe('filtered goes-with with honest fallback (CD-15)', () => {
+  const base: Rgb3 = [140, 160, 130];
+  const paintKey = (p: { brand: string; code: string; name: string }) =>
+    `${p.brand}|${p.code}|${p.name}`;
+
+  it('draws only from the filtered candidates when the pool is deep enough', () => {
+    const counts = new Map<string, number>();
+    for (const p of PAINTS) counts.set(p.brand, (counts.get(p.brand) ?? 0) + 1);
+    const brand = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    const narrowed = PAINTS.filter(p => p.brand === brand);
+
+    const suggestions = harmonySuggestions(base, narrowed);
+    expect(suggestions).toHaveLength(5);
+    for (const s of suggestions) {
+      expect(s.outsideFilters).toBeUndefined();
+      expect(s.paint.brand).toBe(brand);
+    }
+
+    const scheme = roomScheme(base, narrowed);
+    for (const p of [scheme.main, scheme.secondary, scheme.accent]) {
+      expect(p.brand).toBe(brand);
+    }
+    expect(scheme.mainOutsideFilters).toBeUndefined();
+    expect(scheme.secondaryOutsideFilters).toBeUndefined();
+    expect(scheme.accentOutsideFilters).toBeUndefined();
+  });
+
+  it('empty candidates fall back to the full dataset, every pick flagged', () => {
+    const suggestions = harmonySuggestions(base, []);
+    expect(suggestions).toHaveLength(5);
+    for (const s of suggestions) {
+      expect(s.outsideFilters).toBe(true);
+      expect(s.paint.brand).toBeTruthy();
+      expect(s.paint.hex).toMatch(/^#[0-9A-Fa-f]{6}$/);
+    }
+
+    const scheme = roomScheme(base, []);
+    expect(scheme.mainOutsideFilters).toBe(true);
+    expect(scheme.secondaryOutsideFilters).toBe(true);
+    expect(scheme.accentOutsideFilters).toBe(true);
+  });
+
+  it('a tiny pool mixes in-filter picks with flagged fallbacks, never repeating a paint', () => {
+    const tiny = PAINTS.slice(0, 3);
+    const suggestions = harmonySuggestions(base, tiny);
+    expect(suggestions).toHaveLength(5);
+
+    const keys = suggestions.map(s => paintKey(s.paint));
+    expect(new Set(keys).size).toBe(keys.length);
+
+    expect(suggestions.some(s => s.outsideFilters)).toBe(true);
+    for (const s of suggestions) {
+      if (!s.outsideFilters) {
+        expect(tiny.some(p => paintKey(p) === paintKey(s.paint))).toBe(true);
+      }
+    }
   });
 });
 

@@ -23,7 +23,15 @@ const ROLE_LABELS: Record<HarmonyRole, string> = {
   triadic: 'Triadic — balanced three-way contrast',
 };
 
-function PaintRow({ paint, onSelect }: { paint: Paint; onSelect?: (paint: Paint) => void }) {
+function PaintRow({
+  paint,
+  onSelect,
+  outsideFilters,
+}: {
+  paint: Paint;
+  onSelect?: (paint: Paint) => void;
+  outsideFilters?: boolean;
+}) {
   const body = (
     <>
       <View style={[pStyles.swatch, { backgroundColor: paint.hex }]} />
@@ -33,6 +41,7 @@ function PaintRow({ paint, onSelect }: { paint: Paint; onSelect?: (paint: Paint)
         </Text>
         <Text style={pStyles.paintCode}>
           {paint.brand} · {paint.code ? `${paint.code} · ` : ''}{paint.hex.toUpperCase()}
+          {outsideFilters && <Text style={pStyles.outsideLabel}> · outside your filters</Text>}
         </Text>
       </View>
       <BuyButton paint={paint} compact />
@@ -49,16 +58,18 @@ function PaintRow({ paint, onSelect }: { paint: Paint; onSelect?: (paint: Paint)
 export default function PaletteIdeas({
   hex,
   view,
+  candidates,
   onSelectPaint,
 }: {
   hex: string;
   view?: { scheme: RoomScheme; suggestions: PaintSuggestion[] };
+  candidates?: Paint[]; // the user's filtered paint pool (CD-15); full dataset when omitted
   onSelectPaint?: (paint: Paint) => void;
 }) {
   const rgb = useMemo(() => hexToRgb(hex), [hex]);
   const { scheme, suggestions } = useMemo(
-    () => view ?? { scheme: roomScheme(rgb), suggestions: harmonySuggestions(rgb) },
-    [rgb, view]
+    () => view ?? { scheme: roomScheme(rgb, candidates), suggestions: harmonySuggestions(rgb, candidates) },
+    [rgb, view, candidates]
   );
 
   const byRole = useMemo(() => {
@@ -72,9 +83,9 @@ export default function PaletteIdeas({
   }, [suggestions]);
 
   const parts = [
-    { pct: '60%', hint: 'Walls', paint: scheme.main, flex: 6 },
-    { pct: '30%', hint: 'Larger accents', paint: scheme.secondary, flex: 3 },
-    { pct: '10%', hint: 'The pop', paint: scheme.accent, flex: 1 },
+    { pct: '60%', hint: 'Walls', paint: scheme.main, flex: 6, outside: scheme.mainOutsideFilters },
+    { pct: '30%', hint: 'Larger accents', paint: scheme.secondary, flex: 3, outside: scheme.secondaryOutsideFilters },
+    { pct: '10%', hint: 'The pop', paint: scheme.accent, flex: 1, outside: scheme.accentOutsideFilters },
   ];
 
   return (
@@ -93,14 +104,19 @@ export default function PaletteIdeas({
           <Text style={pStyles.schemePct}>
             {p.pct} <Text style={pStyles.schemeHint}>{p.hint}</Text>
           </Text>
-          <PaintRow paint={p.paint} onSelect={onSelectPaint} />
+          <PaintRow paint={p.paint} onSelect={onSelectPaint} outsideFilters={p.outside} />
         </View>
       ))}
       {byRole.map(group => (
         <View key={group.role} style={{ marginTop: 12 }}>
           <Text style={pStyles.sectionTitle}>{ROLE_LABELS[group.role]}</Text>
           {group.items.map(s => (
-            <PaintRow key={`${s.role}${s.angle}`} paint={s.paint} onSelect={onSelectPaint} />
+            <PaintRow
+              key={`${s.role}${s.angle}`}
+              paint={s.paint}
+              onSelect={onSelectPaint}
+              outsideFilters={s.outsideFilters}
+            />
           ))}
         </View>
       ))}
@@ -152,4 +168,5 @@ const pStyles = StyleSheet.create({
   },
   paintName: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
   paintCode: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
+  outsideLabel: { color: COLORS.accent, fontStyle: 'italic' },
 });

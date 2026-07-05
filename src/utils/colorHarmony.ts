@@ -14,12 +14,16 @@ export interface PaintSuggestion {
   angle: number; // hue rotation from the base colour, degrees
   paint: Paint;
   deltaE: number; // distance from the ideal harmony colour to the paint
+  outsideFilters?: boolean; // filtered pool couldn't supply this role — paint is from the full dataset
 }
 
 export interface RoomScheme {
   main: Paint; // 60% — walls: the base colour itself as a real paint
   secondary: Paint; // 30% — analogous: harmonious larger accents
   accent: Paint; // 10% — complementary: the pop
+  mainOutsideFilters?: boolean;
+  secondaryOutsideFilters?: boolean;
+  accentOutsideFilters?: boolean;
 }
 
 // Harmony targets for near-neutral bases would just be more grey (rotating
@@ -52,6 +56,27 @@ export function nearestDistinctPaint(
   return { paint: pick.paint, deltaE: pick.deltaE };
 }
 
+// Prefers the user's filtered candidates; when that pool can't supply an
+// unused paint (empty filters result, or every close paint already used),
+// falls back to the full dataset and flags the pick so the UI can label it
+// "outside your filters" instead of silently widening (CD-15).
+function pickWithFilterFallback(
+  target: Rgb3,
+  used: Set<string>,
+  candidates: Paint[]
+): { paint: Paint; deltaE: number; outsideFilters: boolean } {
+  if (candidates.length) {
+    const matches = matchPaintsLab(rgbToLab(target[0], target[1], target[2]), 10, candidates);
+    const pick = matches.find(m => !used.has(paintKey(m.paint)));
+    if (pick) {
+      used.add(paintKey(pick.paint));
+      return { paint: pick.paint, deltaE: pick.deltaE, outsideFilters: false };
+    }
+  }
+  const full = nearestDistinctPaint(target, used);
+  return { ...full, outsideFilters: candidates !== PAINTS };
+}
+
 const HARMONY_ANGLES: { role: HarmonyRole; angle: number }[] = [
   { role: 'complementary', angle: 180 },
   { role: 'analogous', angle: -30 },
@@ -63,11 +88,11 @@ const HARMONY_ANGLES: { role: HarmonyRole; angle: number }[] = [
 export function harmonySuggestions(rgb: Rgb3, candidates: Paint[] = PAINTS): PaintSuggestion[] {
   const used = new Set<string>();
   // Reserve the base colour's own paint so suggestions differ from it.
-  nearestDistinctPaint(rgb, used, candidates);
+  pickWithFilterFallback(rgb, used, candidates);
   return HARMONY_ANGLES.map(({ role, angle }) => {
     const target = harmonyTarget(rgb, angle);
-    const { paint, deltaE } = nearestDistinctPaint(target, used, candidates);
-    return { role, angle, paint, deltaE };
+    const { paint, deltaE, outsideFilters } = pickWithFilterFallback(target, used, candidates);
+    return outsideFilters ? { role, angle, paint, deltaE, outsideFilters } : { role, angle, paint, deltaE };
   });
 }
 
@@ -75,8 +100,15 @@ export function harmonySuggestions(rgb: Rgb3, candidates: Paint[] = PAINTS): Pai
 // complementary. All three are real, distinct paints.
 export function roomScheme(rgb: Rgb3, candidates: Paint[] = PAINTS): RoomScheme {
   const used = new Set<string>();
-  const main = nearestDistinctPaint(rgb, used, candidates).paint;
-  const secondary = nearestDistinctPaint(harmonyTarget(rgb, 30), used, candidates).paint;
-  const accent = nearestDistinctPaint(harmonyTarget(rgb, 180), used, candidates).paint;
-  return { main, secondary, accent };
+  const main = pickWithFilterFallback(rgb, used, candidates);
+  const secondary = pickWithFilterFallback(harmonyTarget(rgb, 30), used, candidates);
+  const accent = pickWithFilterFallback(harmonyTarget(rgb, 180), used, candidates);
+  return {
+    main: main.paint,
+    secondary: secondary.paint,
+    accent: accent.paint,
+    ...(main.outsideFilters && { mainOutsideFilters: true }),
+    ...(secondary.outsideFilters && { secondaryOutsideFilters: true }),
+    ...(accent.outsideFilters && { accentOutsideFilters: true }),
+  };
 }

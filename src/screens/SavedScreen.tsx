@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 
 import PaletteIdeas from '../components/PaletteIdeas';
+import { usePaintFilters } from '../components/paintMatchUI';
+import { Paint } from '../utils/paintMatcher';
 import {
   SavedColorEntry,
   loadSavedColors,
@@ -61,10 +63,12 @@ function formatTimestamp(ts: number): string {
 
 function SavedColorRow({
   sc,
+  candidates,
   onRemove,
   onLabel,
 }: {
   sc: SavedColorEntry;
+  candidates: Paint[];
   onRemove: (id: string) => void;
   onLabel: (id: string, label: string) => void;
 }) {
@@ -129,13 +133,15 @@ function SavedColorRow({
           <Text style={{ color: COLORS.textMuted, fontSize: 16 }}>✕</Text>
         </TouchableOpacity>
       </View>
-      {showIdeas && <PaletteIdeas hex={sc.hex} />}
+      {showIdeas && <PaletteIdeas hex={sc.hex} candidates={candidates} />}
     </View>
   );
 }
 
 export default function SavedScreen() {
   const { savedColors, remove, setLabel } = useSavedColors();
+  // Goes-with expanders honour the same persisted filters as the Matches tab (CD-15).
+  const { candidates } = usePaintFilters();
   return (
     <View style={styles.container}>
       <SafeAreaView style={{ flex: 1, paddingTop: Platform.OS === 'web' ? 48 : 0 }}>
@@ -149,7 +155,13 @@ export default function SavedScreen() {
         ) : (
           <ScrollView keyboardShouldPersistTaps="handled">
             {savedColors.map(sc => (
-              <SavedColorRow key={sc.id} sc={sc} onRemove={remove} onLabel={setLabel} />
+              <SavedColorRow
+                key={sc.id}
+                sc={sc}
+                candidates={candidates}
+                onRemove={remove}
+                onLabel={setLabel}
+              />
             ))}
           </ScrollView>
         )}

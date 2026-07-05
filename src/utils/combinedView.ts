@@ -19,8 +19,10 @@ export interface CombinedView {
 }
 
 // `candidates` (the user's brand/surface/finish filters) narrows the
-// matches only; goes-with ideas always draw on the full dataset so a
-// tight filter can't empty the palette.
+// matches AND the goes-with ideas (CD-15). A tight filter still can't
+// empty the palette: when a role can't be filled from the filtered pool,
+// colorHarmony falls back to the full dataset and flags the pick as
+// outsideFilters so the UI can label it honestly.
 export function buildCombinedView(
   rgb: Rgb3,
   candidates: Paint[] = PAINTS,
@@ -29,7 +31,7 @@ export function buildCombinedView(
   const [r, g, b] = rgb;
   return {
     matches: matchPaintsLab(rgbToLab(r, g, b), limit, candidates),
-    scheme: roomScheme(rgb),
-    suggestions: harmonySuggestions(rgb),
+    scheme: roomScheme(rgb, candidates),
+    suggestions: harmonySuggestions(rgb, candidates),
   };
 }
