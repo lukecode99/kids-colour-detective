@@ -1,10 +1,10 @@
 // My Colours tab (CD-13): the Saved and Matches tabs merged into one
-// per-capture card list. The live colour under the crosshair renders as
-// the top "current scan" card; every saved capture below it is a card
-// with its thumbnail, editable room label, top-5 matches and an
-// expandable goes-with palette. One set of filter chips at the top
-// narrows the matches on every card at once.
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+// per-capture card list — thumbnail, editable room label, top-5 matches
+// and an expandable goes-with palette per card. One set of filter chips
+// at the top narrows the matches on every card at once.
+// CD-19: the live scan renders on the Scan tab only — this screen shows
+// saved captures alone (buildMyColoursCards pins that down under test).
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -17,10 +17,8 @@ import {
   Image,
 } from 'react-native';
 
-import { useCurrentColour, setCurrentColour } from '../utils/currentColour';
-import { buildCombinedView } from '../utils/combinedView';
+import { useCurrentColour } from '../utils/currentColour';
 import { hexToRgb, rgbToLab } from '../utils/colorMath';
-import { getColorInfo } from '../utils/colorNames';
 import { Paint, matchPaintsLab } from '../utils/paintMatcher';
 import {
   SavedColorEntry,
@@ -28,9 +26,9 @@ import {
   addSavedColor,
   removeSavedColor,
   setSavedColorLabel,
-  newSavedColorId,
 } from '../utils/savedColors';
-import { parseMatchLabel, bestMatchInfo } from '../utils/matchLabel';
+import { buildMyColoursCards, isMyColoursEmpty } from '../utils/myColoursView';
+import { parseMatchLabel } from '../utils/matchLabel';
 import PaletteIdeas from '../components/PaletteIdeas';
 import {
   MatchList,
@@ -38,7 +36,6 @@ import {
   FilterToggleLine,
   FilterEmptyNotice,
   usePaintFilters,
-  bestMatchLabel,
 } from '../components/paintMatchUI';
 import { COLORS } from '../theme';
 
@@ -76,79 +73,6 @@ function formatTimestamp(ts: number): string {
   );
 }
 
-// The live colour handed over from the Scan tab, as the newest card:
-// swatch + name, 💾 into the saved list, its matches, and the goes-with
-// expander — what the Matches tab used to show, folded into one card.
-function CurrentScanCard({
-  candidates,
-  onSaved,
-  onSelectPaint,
-}: {
-  candidates: Paint[];
-  onSaved: (entry: Omit<SavedColorEntry, 'thumbnailUri'>) => void;
-  onSelectPaint: (paint: Paint) => void;
-}) {
-  const current = useCurrentColour();
-  const [savedHex, setSavedHex] = useState<string | null>(null);
-  const [showIdeas, setShowIdeas] = useState(false);
-
-  const view = useMemo(
-    () => (current ? buildCombinedView(current.rgb, candidates) : null),
-    [current, candidates]
-  );
-
-  const onSave = useCallback(() => {
-    if (!current || !view) return;
-    const [r, g, b] = current.rgb;
-    onSaved({
-      id: newSavedColorId(),
-      hex: current.hex,
-      rgb: current.rgb,
-      lab: rgbToLab(r, g, b),
-      name: current.name,
-      emoji: getColorInfo(r, g, b, true).emoji,
-      match: bestMatchLabel(view.matches),
-      bestMatch: bestMatchInfo(view.matches),
-      timestamp: Date.now(),
-    });
-    setSavedHex(current.hex);
-  }, [current, view, onSaved]);
-
-  if (!current || !view) return null;
-  return (
-    <View style={styles.card}>
-      <Text style={styles.cardKicker}>CURRENT SCAN</Text>
-      <View style={styles.cardHead}>
-        <View style={[styles.scanSwatch, { backgroundColor: current.hex }]} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.scanName}>{current.name}</Text>
-          <Text style={styles.cardMeta}>{current.hex.toUpperCase()}</Text>
-        </View>
-        <TouchableOpacity
-          style={[styles.saveBtn, savedHex === current.hex && styles.saveBtnDone]}
-          onPress={onSave}
-          disabled={savedHex === current.hex}
-        >
-          <Text style={styles.saveBtnText}>{savedHex === current.hex ? '✓ Saved' : '💾 Save'}</Text>
-        </TouchableOpacity>
-      </View>
-      {candidates.length === 0 ? <FilterEmptyNotice /> : <MatchList matches={view.matches} />}
-      <TouchableOpacity onPress={() => setShowIdeas(v => !v)} hitSlop={{ top: 6, bottom: 6 }}>
-        <Text style={styles.ideasToggle}>{showIdeas ? '▾' : '▸'} 🎨 Goes-with paints</Text>
-      </TouchableOpacity>
-      {showIdeas && (
-        <View style={styles.ideasWrap}>
-          <PaletteIdeas
-            hex={current.hex}
-            view={{ scheme: view.scheme, suggestions: view.suggestions }}
-            onSelectPaint={onSelectPaint}
-          />
-        </View>
-      )}
-    </View>
-  );
-}
-
 // One card per saved capture: thumbnail, editable room label, top-5
 // matches recomputed against the shared filters, expandable goes-with.
 function CaptureCard({
@@ -156,13 +80,11 @@ function CaptureCard({
   candidates,
   onRemove,
   onLabel,
-  onSelectPaint,
 }: {
   sc: SavedColorEntry;
   candidates: Paint[];
   onRemove: (id: string) => void;
   onLabel: (id: string, label: string) => void;
-  onSelectPaint: (paint: Paint) => void;
 }) {
   const [label, setLabel] = useState(sc.label ?? '');
   const [showIdeas, setShowIdeas] = useState(false);
@@ -224,7 +146,7 @@ function CaptureCard({
       </TouchableOpacity>
       {showIdeas && (
         <View style={styles.ideasWrap}>
-          <PaletteIdeas hex={sc.hex} candidates={candidates} onSelectPaint={onSelectPaint} />
+          <PaletteIdeas hex={sc.hex} candidates={candidates} />
         </View>
       )}
     </View>
@@ -232,24 +154,15 @@ function CaptureCard({
 }
 
 export default function MyColoursScreen() {
-  const { savedColors, save, remove, setLabel } = useSavedColors();
+  const { savedColors, remove, setLabel } = useSavedColors();
   const [showFilters, setShowFilters] = useState(false);
-  const scrollRef = useRef<ScrollView>(null);
   const { filters, onToggle: onToggleFilter, candidates } = usePaintFilters();
+  // Deliberately fed through the CD-19 helpers, which ignore it: a live
+  // scan must not add a card here nor suppress the empty state.
   const current = useCurrentColour();
 
-  // Tapping a goes-with paint makes it the colour under consideration —
-  // the current-scan card at the top rebuilds around it.
-  const onSelectPaint = useCallback((paint: Paint) => {
-    setCurrentColour({
-      rgb: hexToRgb(paint.hex),
-      hex: paint.hex,
-      name: `${paint.brand} — ${paint.name}`,
-    });
-    scrollRef.current?.scrollTo({ y: 0, animated: true });
-  }, []);
-
-  const empty = !current && savedColors.length === 0;
+  const cards = buildMyColoursCards(current, savedColors);
+  const empty = isMyColoursEmpty(current, savedColors);
 
   return (
     <View style={styles.container}>
@@ -271,16 +184,14 @@ export default function MyColoursScreen() {
               onPress={() => setShowFilters(s => !s)}
             />
             {showFilters && <FiltersPanel filters={filters} onToggle={onToggleFilter} />}
-            <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled">
-              <CurrentScanCard candidates={candidates} onSaved={save} onSelectPaint={onSelectPaint} />
-              {savedColors.map(sc => (
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {cards.map(({ entry: sc }) => (
                 <CaptureCard
                   key={sc.id}
                   sc={sc}
                   candidates={candidates}
                   onRemove={remove}
                   onLabel={setLabel}
-                  onSelectPaint={onSelectPaint}
                 />
               ))}
             </ScrollView>
@@ -307,25 +218,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 10,
     borderRadius: 14, backgroundColor: COLORS.surface,
   },
-  cardKicker: {
-    color: COLORS.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1,
-    paddingHorizontal: 12, marginBottom: 6,
-  },
   cardHead: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 12, marginBottom: 8,
   },
-  scanSwatch: {
-    width: 52, height: 52, borderRadius: 10, marginRight: 14,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
-  },
-  scanName: { color: COLORS.text, fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
-  saveBtn: {
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
-    backgroundColor: COLORS.accent, marginLeft: 10,
-  },
-  saveBtnDone: { backgroundColor: 'rgba(255,255,255,0.12)' },
-  saveBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   thumb: { width: 56, height: 56, borderRadius: 10 },
   swatchBar: { width: 6, height: 56, borderRadius: 3, marginLeft: 6, marginRight: 12 },
   cardTitle: { color: COLORS.text, fontSize: 17, fontWeight: '700' },

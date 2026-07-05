@@ -12,9 +12,17 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
+// Native-only module, so the require stays guarded for the web bundle.
+let ImageManipulator: any = null;
+if (Platform.OS !== 'web') {
+  ImageManipulator = require('expo-image-manipulator');
+}
+
 import { getColorInfo, ColorInfo } from '../utils/colorNames';
 import { matchPaintsLab, PaintMatch, Paint } from '../utils/paintMatcher';
 import { rgbToLab } from '../utils/colorMath';
+import { addSavedColor, newSavedColorId } from '../utils/savedColors';
+import { bestMatchInfo } from '../utils/matchLabel';
 import { sampleMedianAt } from '../utils/photoPixels';
 import {
   Rgb,
@@ -31,6 +39,7 @@ import {
   FilterToggleLine,
   FilterEmptyNotice,
   usePaintFilters,
+  bestMatchLabel,
 } from '../components/paintMatchUI';
 import { setCurrentColour } from '../utils/currentColour';
 import { COLORS } from '../theme';
@@ -49,6 +58,47 @@ interface SampleResult {
   rgb: Rgb;
   info: ColorInfo;
   matches: PaintMatch[];
+  coords: { x: number; y: number }; // image-pixel position of the pick, for the thumbnail crop
+}
+
+// Square crop around the picked pixel, shrunk to thumbnail size — so the
+// saved card shows the actual patch of wall, like the camera save does.
+// Returns undefined on any failure; the entry still saves without a photo.
+async function makeThumbnail(
+  photo: PickedPhoto,
+  ix: number,
+  iy: number
+): Promise<string | undefined> {
+  const size = Math.max(48, Math.round(Math.min(photo.width, photo.height) * 0.25));
+  const originX = Math.round(Math.min(Math.max(ix - size / 2, 0), photo.width - size));
+  const originY = Math.round(Math.min(Math.max(iy - size / 2, 0), photo.height - size));
+  if (Platform.OS === 'web') {
+    // savedColors keeps data URLs as-is on web.
+    return new Promise(resolve => {
+      const img = new (globalThis as any).Image();
+      img.onload = () => {
+        try {
+          const c = document.createElement('canvas');
+          c.width = 96;
+          c.height = 96;
+          const ctx = c.getContext('2d');
+          if (!ctx) return resolve(undefined);
+          ctx.drawImage(img, originX, originY, size, size, 0, 0, 96, 96);
+          resolve(c.toDataURL('image/jpeg', 0.7));
+        } catch {
+          resolve(undefined);
+        }
+      };
+      img.onerror = () => resolve(undefined);
+      img.src = photo.uri;
+    });
+  }
+  const t = await ImageManipulator.manipulateAsync(
+    photo.uri,
+    [{ crop: { originX, originY, width: size, height: size } }, { resize: { width: 96 } }],
+    { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+  );
+  return t.uri;
 }
 
 // Circular magnifier centred over the image pixel (ix, iy). Renders the
@@ -165,8 +215,8 @@ export default function PhotoPickerScreen({ onClose }: { onClose: () => void }) 
         rgb,
         info,
         matches: matchPaintsLab(rgbToLab(r, g, b), 5, candidatesRef.current),
+        coords: { x: coords.x, y: coords.y },
       });
-      // Feed the Matches / Palettes tabs.
       setCurrentColour({ rgb, hex: info.hex, name: info.name });
     } catch {
       // keep the previous sample; the loupe still shows where they tapped
@@ -174,6 +224,35 @@ export default function PhotoPickerScreen({ onClose }: { onClose: () => void }) 
       setSampling(false);
     }
   }, []);
+
+  // CD-19: the current scan no longer renders in My Colours, so the photo
+  // flow saves from here — same entry shape as the camera's tap-to-save.
+  const [savedHex, setSavedHex] = useState<string | null>(null);
+  const saveSample = useCallback(async () => {
+    const s = sample;
+    const p = photoRef.current;
+    if (!s) return;
+    let thumb: string | undefined;
+    try {
+      if (p) thumb = await makeThumbnail(p, s.coords.x, s.coords.y);
+    } catch {}
+    const [r, g, b] = s.rgb;
+    addSavedColor(
+      {
+        id: newSavedColorId(),
+        hex: s.info.hex,
+        rgb: s.rgb,
+        lab: rgbToLab(r, g, b),
+        name: s.info.name,
+        emoji: s.info.emoji,
+        match: bestMatchLabel(s.matches),
+        bestMatch: bestMatchInfo(s.matches),
+        timestamp: Date.now(),
+      },
+      thumb
+    );
+    setSavedHex(s.info.hex);
+  }, [sample]);
 
   // Re-run the match when filters change so the list follows the chips.
   useEffect(() => {
@@ -376,6 +455,15 @@ export default function PhotoPickerScreen({ onClose }: { onClose: () => void }) 
                 </Text>
               </View>
               {sampling && <Text style={styles.samplingText}>…</Text>}
+              <TouchableOpacity
+                style={[styles.saveBtn, savedHex === sample.info.hex && styles.saveBtnDone]}
+                onPress={saveSample}
+                disabled={savedHex === sample.info.hex}
+              >
+                <Text style={styles.saveBtnText}>
+                  {savedHex === sample.info.hex ? '✓ Saved' : '💾 Save'}
+                </Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <Text style={styles.emptyText}>
@@ -474,6 +562,12 @@ const styles = StyleSheet.create({
   colorName: { color: COLORS.text, fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
   colorHex: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600', marginTop: 2 },
   samplingText: { color: COLORS.textMuted, fontSize: 20, marginLeft: 8 },
+  saveBtn: {
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
+    backgroundColor: COLORS.accent, marginLeft: 10,
+  },
+  saveBtnDone: { backgroundColor: 'rgba(255,255,255,0.12)' },
+  saveBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   emptyText: {
     color: COLORS.textMuted, fontSize: 15, fontWeight: '600',
     paddingHorizontal: 20, paddingTop: 14, paddingBottom: 6,
