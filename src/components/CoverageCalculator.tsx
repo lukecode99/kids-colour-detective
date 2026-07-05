@@ -1,5 +1,7 @@
-// "How much paint?" calculator for a matched paint: wall dimensions ->
-// litres -> tins -> price, with the buy link right next to the answer.
+// "How much paint?" calculator: wall dimensions -> litres -> tins -> price.
+// CD-21: lives on the Planner tab as a standalone section (paint is the
+// current top match when there is one — it only adds the buy link, the
+// maths never depends on it).
 import React, { useState } from 'react';
 import { StyleSheet, View, Text, TextInput, TouchableOpacity } from 'react-native';
 import { Paint } from '../utils/paintMatcher';
@@ -7,7 +9,7 @@ import { calcCoverage, parseMetres, COVERAGE_DEFAULTS } from '../utils/coverage'
 import BuyButton from './BuyButton';
 import { COLORS } from '../theme';
 
-export default function CoverageCalculator({ paint }: { paint: Paint }) {
+export default function CoverageCalculator({ paint }: { paint?: Paint }) {
   const [widthText, setWidthText] = useState('');
   const [heightText, setHeightText] = useState('2.4');
   const [coats, setCoats] = useState(COVERAGE_DEFAULTS.coats);
@@ -64,7 +66,7 @@ export default function CoverageCalculator({ paint }: { paint: Paint }) {
               {result.tins} × {COVERAGE_DEFAULTS.tinSizeL} L tin{result.tins > 1 ? 's' : ''}
             </Text> ≈ £{result.totalPriceGbp}
           </Text>
-          <BuyButton paint={paint} compact />
+          {paint && <BuyButton paint={paint} compact />}
         </View>
       ) : (
         <Text style={cStyles.hint}>

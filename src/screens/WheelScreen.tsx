@@ -19,6 +19,7 @@ import { buildCombinedView } from '../utils/combinedView';
 import { getColorInfo } from '../utils/colorNames';
 import { Paint } from '../utils/paintMatcher';
 import PaletteIdeas from '../components/PaletteIdeas';
+import CoverageCalculator from '../components/CoverageCalculator';
 import {
   MatchList,
   FiltersPanel,
@@ -234,6 +235,13 @@ export default function WheelScreen() {
               onSelectPaint={onSelectPaint}
             />
           </View>
+
+          {/* CD-21: the paint-quantity calculator lives here as its own
+              section — it used to be an accordion on every capture card.
+              The top match only supplies the buy link. */}
+          <View style={styles.calcSection}>
+            <CoverageCalculator paint={view.matches[0]?.paint} />
+          </View>
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -290,7 +298,8 @@ const styles = StyleSheet.create({
   },
   previewName: { color: COLORS.text, fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
   previewHex: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600', marginTop: 2 },
-  goesWith: { paddingHorizontal: 20, paddingBottom: 24, marginTop: 8 },
+  goesWith: { paddingHorizontal: 20, marginTop: 8 },
+  calcSection: { paddingHorizontal: 20, paddingBottom: 24, marginTop: 4 },
   goesWithTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
   goesWithHint: { color: COLORS.textMuted, fontSize: 12, marginTop: 2, marginBottom: 4 },
 });

@@ -7,7 +7,6 @@ import { StyleSheet, View, Text, TouchableOpacity, ScrollView } from 'react-nati
 import { PaintMatch, PAINTS } from '../utils/paintMatcher';
 import { bestMatchInfo, formatMatchLabel } from '../utils/matchLabel';
 import BuyButton from './BuyButton';
-import CoverageCalculator from './CoverageCalculator';
 import {
   PaintFilters,
   EMPTY_FILTERS,
@@ -27,9 +26,10 @@ export function bestMatchLabel(matches: PaintMatch[]): string {
 }
 
 // Shared top-5 list rendered in paint mode on both platforms. Every row
-// carries a buy link; the top match gets a coverage-calculator expander.
+// carries a buy link. The coverage calculator is NOT part of this list —
+// CD-21 moved it to the Planner tab as a standalone section, so no capture
+// or saved card carries a "How much paint do I need?" accordion.
 export function MatchList({ matches }: { matches: PaintMatch[] }) {
-  const [showCalc, setShowCalc] = useState(false);
   if (!matches.length) return null;
   return (
     <View style={styles.matchList}>
@@ -50,12 +50,6 @@ export function MatchList({ matches }: { matches: PaintMatch[] }) {
           <BuyButton paint={m.paint} compact />
         </View>
       ))}
-      <TouchableOpacity onPress={() => setShowCalc(v => !v)} hitSlop={{ top: 6, bottom: 6 }}>
-        <Text style={styles.calcToggle}>
-          {showCalc ? '▾' : '▸'} 📐 How much paint do I need?
-        </Text>
-      </TouchableOpacity>
-      {showCalc && <CoverageCalculator paint={matches[0].paint} />}
     </View>
   );
 }
@@ -191,5 +185,4 @@ const styles = StyleSheet.create({
   matchListName: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
   matchListBrand: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
   matchListPct: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginLeft: 8 },
-  calcToggle: { color: COLORS.accent, fontSize: 12, fontWeight: '700', paddingTop: 8 },
 });
