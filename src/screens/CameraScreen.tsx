@@ -129,7 +129,10 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   const [camError, setCamError] = useState<string | null>(null);
   const [whiteRefMode, setWhiteRefMode] = useState<WhiteRefMode>('off');
   const [rawRgb, setRawRgb] = useState<Rgb>([128, 128, 128]);
-  const { candidates } = usePaintFilters();
+  const { filters, candidates } = usePaintFilters();
+  // Snapshot for saveColor, whose deps stay [] via the functional setState.
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
 
   const historyRef = useRef<Rgb[]>([]);
   const rawRgbRef = useRef<Rgb>([128, 128, 128]);
@@ -256,6 +259,8 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
           match: bestMatchLabel(cs.matches),
           bestMatch: bestMatchInfo(cs.matches),
           timestamp: Date.now(),
+          // CD-20: the globals seed the capture's own filter set at save.
+          filters: filtersRef.current,
         },
         thumb
       );
@@ -382,7 +387,7 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   const [rawRgb, setRawRgb] = useState<Rgb>([128, 128, 128]);
   const [torchOn, setTorchOn] = useState(false);
   const [isUnstable, setIsUnstable] = useState(false);
-  const { candidates } = usePaintFilters();
+  const { filters, candidates } = usePaintFilters();
 
   const cameraRef = useRef<any>(null);
   const historyRef = useRef<Rgb[]>([]);
@@ -499,10 +504,12 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         match: bestMatchLabel(matches),
         bestMatch: bestMatchInfo(matches),
         timestamp: Date.now(),
+        // CD-20: the globals seed the capture's own filter set at save.
+        filters,
       },
       thumb
     );
-  }, [colorInfo, matches]);
+  }, [colorInfo, matches, filters]);
 
   if (!hasPermission) {
     return (

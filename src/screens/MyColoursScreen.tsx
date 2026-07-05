@@ -1,9 +1,10 @@
 // My Colours tab (CD-13): the Saved and Matches tabs merged into one
 // per-capture card list — thumbnail, editable room label, top-5 matches
-// and an expandable goes-with palette per card. One set of filter chips
-// at the top narrows the matches on every card at once.
+// and an expandable goes-with palette per card.
 // CD-19: the live scan renders on the Scan tab only — this screen shows
 // saved captures alone (buildMyColoursCards pins that down under test).
+// CD-20: every card carries its own filter chips (room-level preferences);
+// the global filters live on the Scan tab and only seed a capture at save.
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   StyleSheet,
@@ -19,15 +20,22 @@ import {
 
 import { useCurrentColour } from '../utils/currentColour';
 import { hexToRgb, rgbToLab } from '../utils/colorMath';
-import { Paint, matchPaintsLab } from '../utils/paintMatcher';
+import { matchPaintsLab } from '../utils/paintMatcher';
+import { PaintFilters, toggleFilter } from '../utils/filters';
 import {
   SavedColorEntry,
   loadSavedColors,
   addSavedColor,
   removeSavedColor,
   setSavedColorLabel,
+  setSavedColorFilters,
 } from '../utils/savedColors';
-import { buildMyColoursCards, isMyColoursEmpty } from '../utils/myColoursView';
+import {
+  buildMyColoursCards,
+  isMyColoursEmpty,
+  captureFilters,
+  captureCandidates,
+} from '../utils/myColoursView';
 import { parseMatchLabel } from '../utils/matchLabel';
 import PaletteIdeas from '../components/PaletteIdeas';
 import {
@@ -35,7 +43,6 @@ import {
   FiltersPanel,
   FilterToggleLine,
   FilterEmptyNotice,
-  usePaintFilters,
 } from '../components/paintMatchUI';
 import { COLORS } from '../theme';
 
@@ -60,8 +67,11 @@ export function useSavedColors() {
   const setLabel = useCallback((id: string, label: string) => {
     setSavedColorLabel(id, label).then(setSavedColors);
   }, []);
+  const setFilters = useCallback((id: string, filters: PaintFilters) => {
+    setSavedColorFilters(id, filters).then(setSavedColors);
+  }, []);
 
-  return { savedColors, save, remove, setLabel };
+  return { savedColors, save, remove, setLabel, setFilters };
 }
 
 function formatTimestamp(ts: number): string {
@@ -73,26 +83,30 @@ function formatTimestamp(ts: number): string {
   );
 }
 
-// One card per saved capture: thumbnail, editable room label, top-5
-// matches recomputed against the shared filters, expandable goes-with.
+// One card per saved capture: thumbnail, editable room label, its own
+// filter chips (CD-20 — room-level preferences), top-5 matches and
+// goes-with recomputed against THIS card's filters only.
 function CaptureCard({
   sc,
-  candidates,
   onRemove,
   onLabel,
+  onFilters,
 }: {
   sc: SavedColorEntry;
-  candidates: Paint[];
   onRemove: (id: string) => void;
   onLabel: (id: string, label: string) => void;
+  onFilters: (id: string, filters: PaintFilters) => void;
 }) {
   const [label, setLabel] = useState(sc.label ?? '');
   const [showIdeas, setShowIdeas] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const commit = () => onLabel(sc.id, label);
   // Pre-CD-14 entries froze the match as one string — recover the parts so
   // the paint name gets its own full-width line on old cards too.
   const best = sc.bestMatch ?? (sc.match ? parseMatchLabel(sc.match) : undefined);
-  // Matches recompute live against the shared filters. Legacy hex-only
+  const filters = captureFilters(sc);
+  const candidates = useMemo(() => captureCandidates(sc), [sc]);
+  // Matches recompute live against this capture's filters. Legacy hex-only
   // entries are migrated at load, but derive here too so a card never
   // renders without its matches.
   const matches = useMemo(() => {
@@ -140,6 +154,18 @@ function CaptureCard({
           <Text style={{ color: COLORS.textMuted, fontSize: 16 }}>✕</Text>
         </TouchableOpacity>
       </View>
+      <FilterToggleLine
+        filters={filters}
+        candidateCount={candidates.length}
+        expanded={showFilters}
+        onPress={() => setShowFilters(s => !s)}
+      />
+      {showFilters && (
+        <FiltersPanel
+          filters={filters}
+          onToggle={(group, value) => onFilters(sc.id, toggleFilter(filters, group, value))}
+        />
+      )}
       {candidates.length === 0 ? <FilterEmptyNotice /> : <MatchList matches={matches} />}
       <TouchableOpacity onPress={() => setShowIdeas(v => !v)} hitSlop={{ top: 6, bottom: 6 }}>
         <Text style={styles.ideasToggle}>{showIdeas ? '▾' : '▸'} 🎨 Goes-with paints</Text>
@@ -154,9 +180,7 @@ function CaptureCard({
 }
 
 export default function MyColoursScreen() {
-  const { savedColors, remove, setLabel } = useSavedColors();
-  const [showFilters, setShowFilters] = useState(false);
-  const { filters, onToggle: onToggleFilter, candidates } = usePaintFilters();
+  const { savedColors, remove, setLabel, setFilters } = useSavedColors();
   // Deliberately fed through the CD-19 helpers, which ignore it: a live
   // scan must not add a card here nor suppress the empty state.
   const current = useCurrentColour();
@@ -176,26 +200,17 @@ export default function MyColoursScreen() {
             on a photo — and every capture shows up here as a card.
           </Text>
         ) : (
-          <>
-            <FilterToggleLine
-              filters={filters}
-              candidateCount={candidates.length}
-              expanded={showFilters}
-              onPress={() => setShowFilters(s => !s)}
-            />
-            {showFilters && <FiltersPanel filters={filters} onToggle={onToggleFilter} />}
-            <ScrollView keyboardShouldPersistTaps="handled">
-              {cards.map(({ entry: sc }) => (
-                <CaptureCard
-                  key={sc.id}
-                  sc={sc}
-                  candidates={candidates}
-                  onRemove={remove}
-                  onLabel={setLabel}
-                />
-              ))}
-            </ScrollView>
-          </>
+          <ScrollView keyboardShouldPersistTaps="handled">
+            {cards.map(({ entry: sc }) => (
+              <CaptureCard
+                key={sc.id}
+                sc={sc}
+                onRemove={remove}
+                onLabel={setLabel}
+                onFilters={setFilters}
+              />
+            ))}
+          </ScrollView>
         )}
       </SafeAreaView>
     </View>

@@ -4,6 +4,8 @@
 // pinned down in one place.
 import { SavedColorEntry } from './savedColors';
 import { CurrentColour } from './currentColour';
+import { Paint, PAINTS } from './paintMatcher';
+import { PaintFilters, EMPTY_FILTERS, applyFilters } from './filters';
 
 export interface MyColoursCard {
   kind: 'capture';
@@ -27,4 +29,16 @@ export function isMyColoursEmpty(
   saved: SavedColorEntry[]
 ): boolean {
   return saved.length === 0;
+}
+
+// CD-20: each capture carries its own filter set (room-level preferences),
+// so a card's matches and goes-with palette compute against ITS candidates,
+// never a shared pool. Entries missing a set (mid-migration) fall back to
+// unfiltered rather than someone else's preferences.
+export function captureFilters(entry: SavedColorEntry): PaintFilters {
+  return entry.filters ?? EMPTY_FILTERS;
+}
+
+export function captureCandidates(entry: SavedColorEntry, paints: Paint[] = PAINTS): Paint[] {
+  return applyFilters(paints, captureFilters(entry));
 }

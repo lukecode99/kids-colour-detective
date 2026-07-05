@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import { BestMatchInfo } from './matchLabel';
 import { hexToRgb, rgbToLab, Lab } from './colorMath';
+import { PaintFilters, loadFilters } from './filters';
 
 export interface SavedColorEntry {
   id: string;
@@ -16,6 +17,7 @@ export interface SavedColorEntry {
   timestamp: number;
   label?: string; // optional room label, e.g. "Kitchen"
   thumbnailUri?: string; // FileSystem file on native, data URL on web
+  filters?: PaintFilters; // per-capture filter set (CD-20) — room-level preferences
 }
 
 // CD-13: entries persisted before rgb/lab existed carry only hex. Both are
@@ -26,6 +28,21 @@ export function withColourData(entry: SavedColorEntry): SavedColorEntry {
   const rgb = entry.rgb ?? hexToRgb(entry.hex);
   const lab = entry.lab ?? rgbToLab(rgb[0], rgb[1], rgb[2]);
   return { ...entry, rgb, lab };
+}
+
+// CD-20: filters moved from global state onto each capture (room-level
+// preferences, e.g. kitchen = washable silk, bedroom = matt). Entries saved
+// before that inherit the current global set once, at load — the same lazy
+// migration CD-13 used for rgb/lab.
+export function withCaptureFilters(
+  entry: SavedColorEntry,
+  globalFilters: PaintFilters
+): SavedColorEntry {
+  const f = entry.filters;
+  if (f && Array.isArray(f.brands) && Array.isArray(f.surfaces) && Array.isArray(f.finishes)) {
+    return entry;
+  }
+  return { ...entry, filters: globalFilters };
 }
 
 const STORAGE_KEY = 'savedColors.v1';
@@ -51,8 +68,10 @@ export async function loadSavedColors(): Promise<SavedColorEntry[]> {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     const entries: SavedColorEntry[] = parsed.filter(e => e && typeof e.id === 'string');
-    // Lazy migration: persist rgb/lab for legacy entries on first load.
-    const migrated = entries.map(withColourData);
+    // Lazy migration: persist rgb/lab (CD-13) and a per-capture filter set
+    // inherited from the globals (CD-20) for legacy entries on first load.
+    const globalFilters = await loadFilters();
+    const migrated = entries.map(e => withCaptureFilters(withColourData(e), globalFilters));
     if (migrated.some((e, i) => e !== entries[i])) await persist(migrated);
     return migrated;
   } catch {
@@ -115,6 +134,17 @@ export async function removeSavedColor(id: string): Promise<SavedColorEntry[]> {
   const removed = current.find(e => e.id === id);
   if (removed) void deleteThumbnail(removed);
   const next = current.filter(e => e.id !== id);
+  await persist(next);
+  return next;
+}
+
+// CD-20: edit one capture's filter set without touching any other card's.
+export async function setSavedColorFilters(
+  id: string,
+  filters: PaintFilters
+): Promise<SavedColorEntry[]> {
+  const current = await loadSavedColors();
+  const next = current.map(e => (e.id === id ? { ...e, filters } : e));
   await persist(next);
   return next;
 }

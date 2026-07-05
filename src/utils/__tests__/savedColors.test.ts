@@ -4,12 +4,14 @@ import {
   addSavedColor,
   removeSavedColor,
   setSavedColorLabel,
+  setSavedColorFilters,
   newSavedColorId,
   withColourData,
   SavedColorEntry,
 } from '../savedColors';
 import { hexToRgb, rgbToLab } from '../colorMath';
 import { matchPaintsLab } from '../paintMatcher';
+import { EMPTY_FILTERS, saveFilters, PaintFilters } from '../filters';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest')
@@ -142,5 +144,72 @@ describe('entry colour data & legacy migration (CD-13)', () => {
     const fromHex = matchPaintsLab(rgbToLab(...hexToRgb('#8CA082')), 5);
     expect(fromEntry.map(m => m.paint.hex)).toEqual(fromHex.map(m => m.paint.hex));
     expect(fromEntry).toHaveLength(5);
+  });
+});
+
+describe('per-capture filters (CD-20)', () => {
+  const KITCHEN: PaintFilters = { brands: [], surfaces: ['interior wall'], finishes: ['silk'] };
+  const BEDROOM: PaintFilters = { brands: [], surfaces: [], finishes: ['matt'] };
+
+  it('two captures hold different filter sets simultaneously and survive a restart', async () => {
+    const kitchen = entry({ hex: '#C8B4A0', filters: KITCHEN });
+    const bedroom = entry({ hex: '#8CA082', filters: BEDROOM });
+    await addSavedColor(kitchen);
+    await addSavedColor(bedroom);
+
+    // a fresh load from storage is what the app sees after a restart
+    const loaded = await loadSavedColors();
+    expect(loaded).toHaveLength(2);
+    expect(loaded.find(e => e.id === kitchen.id)!.filters).toEqual(KITCHEN);
+    expect(loaded.find(e => e.id === bedroom.id)!.filters).toEqual(BEDROOM);
+  });
+
+  it('editing one capture leaves the other untouched', async () => {
+    const a = entry({ hex: '#AAAAAA', filters: KITCHEN });
+    const b = entry({ hex: '#BBBBBB', filters: BEDROOM });
+    await addSavedColor(a);
+    await addSavedColor(b);
+
+    await setSavedColorFilters(a.id, { brands: ['Dulux'], surfaces: [], finishes: [] });
+
+    const loaded = await loadSavedColors();
+    expect(loaded.find(e => e.id === a.id)!.filters).toEqual({
+      brands: ['Dulux'],
+      surfaces: [],
+      finishes: [],
+    });
+    expect(loaded.find(e => e.id === b.id)!.filters).toEqual(BEDROOM);
+  });
+
+  it('legacy entries without filters inherit the current globals, persisted, no data loss', async () => {
+    await saveFilters(BEDROOM); // the globals at migration time
+    const legacy = entry({ hex: '#1565C0', label: 'Hall' });
+    await AsyncStorage.setItem('savedColors.v1', JSON.stringify([legacy]));
+
+    const [migrated] = await loadSavedColors();
+    expect(migrated.filters).toEqual(BEDROOM);
+    // migration keeps everything else intact
+    expect(migrated).toMatchObject({ id: legacy.id, hex: '#1565C0', label: 'Hall' });
+    expect(migrated.rgb).toEqual(hexToRgb('#1565C0'));
+
+    // persisted back so the inheritance happens once, not on every load
+    const stored = JSON.parse((await AsyncStorage.getItem('savedColors.v1'))!);
+    expect(stored[0].filters).toEqual(BEDROOM);
+  });
+
+  it('a capture saved with a snapshot keeps it — later global changes do not leak in', async () => {
+    const snap = entry({ hex: '#4CAF50', filters: KITCHEN });
+    await addSavedColor(snap);
+    await saveFilters(BEDROOM); // globals move on after the save
+    const [loaded] = await loadSavedColors();
+    expect(loaded.filters).toEqual(KITCHEN);
+  });
+
+  it('an entry saved with empty filters stays unfiltered (empty ≠ missing)', async () => {
+    await saveFilters(BEDROOM);
+    const open = entry({ hex: '#222222', filters: EMPTY_FILTERS });
+    await addSavedColor(open);
+    const [loaded] = await loadSavedColors();
+    expect(loaded.filters).toEqual(EMPTY_FILTERS);
   });
 });

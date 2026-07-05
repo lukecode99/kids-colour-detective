@@ -248,11 +248,13 @@ export default function PhotoPickerScreen({ onClose }: { onClose: () => void }) 
         match: bestMatchLabel(s.matches),
         bestMatch: bestMatchInfo(s.matches),
         timestamp: Date.now(),
+        // CD-20: the globals seed the capture's own filter set at save.
+        filters,
       },
       thumb
     );
     setSavedHex(s.info.hex);
-  }, [sample]);
+  }, [sample, filters]);
 
   // Re-run the match when filters change so the list follows the chips.
   useEffect(() => {
