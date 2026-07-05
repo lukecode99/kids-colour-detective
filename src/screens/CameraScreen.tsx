@@ -9,6 +9,8 @@ import {
   SafeAreaView,
   Platform,
   ScrollView,
+  TextInput,
+  Image,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
@@ -38,6 +40,14 @@ import {
   SURFACE_OPTIONS,
   FINISH_OPTIONS,
 } from '../utils/filters';
+import {
+  SavedColorEntry,
+  loadSavedColors,
+  addSavedColor,
+  removeSavedColor,
+  setSavedColorLabel,
+  newSavedColorId,
+} from '../utils/savedColors';
 import { COLORS, FONTS } from '../theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -55,11 +65,6 @@ interface WhiteRef {
   b: number;
   gridX: number;
   gridY: number;
-}
-
-interface SavedColor {
-  info: ColorInfo;
-  match: string;
 }
 
 function findWhiteRegion(pixels: [number, number, number][][]): WhiteRef | null {
@@ -174,6 +179,121 @@ function usePaintFilters() {
   return { filters, onToggle, candidates };
 }
 
+// Loads the persisted saved-colours list and exposes mutators that keep
+// storage and state in sync.
+function useSavedColors() {
+  const [savedColors, setSavedColors] = useState<SavedColorEntry[]>([]);
+
+  useEffect(() => {
+    loadSavedColors().then(setSavedColors);
+  }, []);
+
+  const save = useCallback(
+    (entry: Omit<SavedColorEntry, 'thumbnailUri'>, tempThumbnailUri?: string) => {
+      addSavedColor(entry, tempThumbnailUri).then(setSavedColors);
+    },
+    []
+  );
+  const remove = useCallback((id: string) => {
+    removeSavedColor(id).then(setSavedColors);
+  }, []);
+  const setLabel = useCallback((id: string, label: string) => {
+    setSavedColorLabel(id, label).then(setSavedColors);
+  }, []);
+
+  return { savedColors, save, remove, setLabel };
+}
+
+function formatTimestamp(ts: number): string {
+  const d = new Date(ts);
+  return (
+    d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) +
+    ', ' +
+    d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  );
+}
+
+function SavedColorRow({
+  sc,
+  onRemove,
+  onLabel,
+}: {
+  sc: SavedColorEntry;
+  onRemove: (id: string) => void;
+  onLabel: (id: string, label: string) => void;
+}) {
+  const [label, setLabel] = useState(sc.label ?? '');
+  const commit = () => onLabel(sc.id, label);
+  return (
+    <View style={styles.savedRow}>
+      {sc.thumbnailUri ? (
+        <Image source={{ uri: sc.thumbnailUri }} style={styles.savedThumb} />
+      ) : (
+        <View style={[styles.savedThumb, { backgroundColor: sc.hex }]} />
+      )}
+      <View style={[styles.savedSwatchBar, { backgroundColor: sc.hex }]} />
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: COLORS.text, fontSize: 17, fontWeight: '700' }}>
+          {sc.emoji} {sc.name}
+        </Text>
+        {!!sc.match && (
+          <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 2 }}>{sc.match}</Text>
+        )}
+        <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 1 }}>
+          {sc.hex} · {formatTimestamp(sc.timestamp)}
+        </Text>
+        <TextInput
+          style={styles.savedLabelInput}
+          placeholder="Add room label…"
+          placeholderTextColor="rgba(255,255,255,0.3)"
+          value={label}
+          onChangeText={setLabel}
+          onBlur={commit}
+          onSubmitEditing={commit}
+          returnKeyType="done"
+        />
+      </View>
+      <TouchableOpacity onPress={() => onRemove(sc.id)} style={styles.savedDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <Text style={{ color: COLORS.textMuted, fontSize: 16 }}>✕</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function SavedColorsScreen({
+  entries,
+  onBack,
+  onRemove,
+  onLabel,
+}: {
+  entries: SavedColorEntry[];
+  onBack: () => void;
+  onRemove: (id: string) => void;
+  onLabel: (id: string, label: string) => void;
+}) {
+  return (
+    <View style={[styles.container, { backgroundColor: COLORS.bg }]}>
+      <SafeAreaView style={{ flex: 1, paddingTop: Platform.OS === 'web' ? 48 : 0 }}>
+        <View style={styles.savedHeader}>
+          <TouchableOpacity onPress={onBack} style={{ marginRight: 12 }}>
+            <Text style={{ color: COLORS.accent, fontSize: 28 }}>←</Text>
+          </TouchableOpacity>
+          <Text style={{ color: COLORS.text, fontSize: 22, fontWeight: '800' }}>Saved Colours</Text>
+        </View>
+        {entries.length === 0 ? (
+          <Text style={styles.savedEmpty}>No colours saved yet</Text>
+        ) : (
+          <ScrollView keyboardShouldPersistTaps="handled">
+            {entries.map(sc => (
+              <SavedColorRow key={sc.id} sc={sc} onRemove={onRemove} onLabel={onLabel} />
+            ))}
+          </ScrollView>
+        )}
+      </SafeAreaView>
+    </View>
+  );
+}
+
 interface WebColorState {
   info: ColorInfo;
   matches: PaintMatch[];
@@ -190,11 +310,11 @@ function WebCameraScreen() {
   const [complexMode, setComplexMode] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
-  const [savedColors, setSavedColors] = useState<WebColorState[]>([]);
   const [showSaved, setShowSaved] = useState(false);
   const [camError, setCamError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const { filters, onToggle: onToggleFilter, candidates } = usePaintFilters();
+  const { savedColors, save, remove, setLabel } = useSavedColors();
 
   const breathScale = useRef(new Animated.Value(1)).current;
 
@@ -266,10 +386,39 @@ function WebCameraScreen() {
 
   const saveColor = useCallback(() => {
     setColorState(cs => {
-      setSavedColors(prev => [cs, ...prev.slice(0, 19)]);
+      // Centre-crop thumbnail from the live video so the saved entry shows
+      // what was actually scanned.
+      let thumb: string | undefined;
+      try {
+        const video = videoRef.current;
+        if (video && video.readyState >= 2) {
+          const c = document.createElement('canvas');
+          c.width = 96;
+          c.height = 96;
+          const ctx = c.getContext('2d');
+          if (ctx) {
+            const vw = video.videoWidth;
+            const vh = video.videoHeight;
+            const s = Math.min(vw, vh) * 0.5;
+            ctx.drawImage(video, (vw - s) / 2, (vh - s) / 2, s, s, 0, 0, 96, 96);
+            thumb = c.toDataURL('image/jpeg', 0.7);
+          }
+        }
+      } catch {}
+      save(
+        {
+          id: newSavedColorId(),
+          hex: cs.info.hex,
+          name: cs.info.name,
+          emoji: cs.info.emoji,
+          match: bestMatchLabel(cs.matches),
+          timestamp: Date.now(),
+        },
+        thumb
+      );
       return cs;
     });
-  }, []);
+  }, [save]);
 
   if (camError) {
     return (
@@ -284,30 +433,12 @@ function WebCameraScreen() {
 
   if (showSaved) {
     return (
-      <View style={[styles.container, { backgroundColor: COLORS.bg }]}>
-        <SafeAreaView style={{ flex: 1, paddingTop: 48 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 16 }}>
-            <TouchableOpacity onPress={() => setShowSaved(false)} style={{ marginRight: 12 }}>
-              <Text style={{ color: COLORS.accent, fontSize: 28 }}>←</Text>
-            </TouchableOpacity>
-            <Text style={{ color: COLORS.text, fontSize: 22, fontWeight: '800' }}>Saved Colours</Text>
-          </View>
-          {savedColors.length === 0 ? (
-            <Text style={{ color: COLORS.textMuted, textAlign: 'center', marginTop: 40, fontSize: 16 }}>No colours saved yet</Text>
-          ) : (
-            savedColors.map((sc, i) => (
-              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' }}>
-                <View style={{ width: 48, height: 48, borderRadius: 10, backgroundColor: sc.info.hex, marginRight: 14 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700' }}>{sc.info.emoji} {sc.info.name}</Text>
-                  <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 2 }}>{bestMatchLabel(sc.matches)}</Text>
-                  <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 1 }}>{sc.info.hex}</Text>
-                </View>
-              </View>
-            ))
-          )}
-        </SafeAreaView>
-      </View>
+      <SavedColorsScreen
+        entries={savedColors}
+        onBack={() => setShowSaved(false)}
+        onRemove={remove}
+        onLabel={setLabel}
+      />
     );
   }
 
@@ -406,16 +537,17 @@ function NativeCameraScreen() {
   const [whiteRefEnabled, setWhiteRefEnabled] = useState(false);
   const [whiteRefPos, setWhiteRefPos] = useState<WhiteRef | null>(null);
   const [torchOn, setTorchOn] = useState(false);
-  const [savedColors, setSavedColors] = useState<SavedColor[]>([]);
   const [showSaved, setShowSaved] = useState(false);
   const [isUnstable, setIsUnstable] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const { filters, onToggle: onToggleFilter, candidates } = usePaintFilters();
+  const { savedColors, save, remove, setLabel } = useSavedColors();
 
   const cameraRef = useRef<any>(null);
   const scanningRef = useRef(false);
   const whiteRefDataRef = useRef<WhiteRef | null>(null);
   const rgbHistoryRef = useRef<[number, number, number][]>([]);
+  const lastPhotoUriRef = useRef<string | null>(null);
 
   const breathScale = useRef(new Animated.Value(1)).current;
   const scanOpacity = useRef(new Animated.Value(1)).current;
@@ -459,6 +591,7 @@ function NativeCameraScreen() {
       });
 
       if (!photo) return;
+      lastPhotoUriRef.current = photo.uri;
 
       // Center crop → 1×1 for colour reading
       const imgW = photo.width;
@@ -546,9 +679,33 @@ function NativeCameraScreen() {
     }
   };
 
-  const saveColor = useCallback(() => {
-    setSavedColors(prev => [{ info: colorInfo, match: bestMatchLabel(matches) }, ...prev.slice(0, 19)]);
-  }, [colorInfo, matches]);
+  const saveColor = useCallback(async () => {
+    // Small centre-crop thumbnail from the most recent scan photo; the
+    // camera cache file is temporary, so savedColors copies it to app storage.
+    let thumb: string | undefined;
+    const uri = lastPhotoUriRef.current;
+    if (uri) {
+      try {
+        const t = await ImageManipulator.manipulateAsync(
+          uri,
+          [{ resize: { width: 96 } }],
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        thumb = t.uri;
+      } catch {}
+    }
+    save(
+      {
+        id: newSavedColorId(),
+        hex: colorInfo.hex,
+        name: colorInfo.name,
+        emoji: colorInfo.emoji,
+        match: bestMatchLabel(matches),
+        timestamp: Date.now(),
+      },
+      thumb
+    );
+  }, [colorInfo, matches, save]);
 
   if (!permission) {
     return (
@@ -572,32 +729,12 @@ function NativeCameraScreen() {
 
   if (showSaved) {
     return (
-      <View style={[styles.container, { backgroundColor: COLORS.bg }]}>
-        <SafeAreaView style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, marginBottom: 16 }}>
-            <TouchableOpacity onPress={() => setShowSaved(false)} style={{ marginRight: 12 }}>
-              <Text style={{ color: COLORS.accent, fontSize: 28 }}>←</Text>
-            </TouchableOpacity>
-            <Text style={{ color: COLORS.text, fontSize: 22, fontWeight: '800' }}>Saved Colours</Text>
-          </View>
-          {savedColors.length === 0 ? (
-            <Text style={{ color: COLORS.textMuted, textAlign: 'center', marginTop: 40, fontSize: 16 }}>No colours saved yet</Text>
-          ) : (
-            <ScrollView>
-              {savedColors.map((sc, i) => (
-                <View key={i} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' }}>
-                  <View style={{ width: 48, height: 48, borderRadius: 10, backgroundColor: sc.info.hex, marginRight: 14 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700' }}>{sc.info.emoji} {sc.info.name}</Text>
-                    <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 2 }}>{sc.match}</Text>
-                    <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 1 }}>{sc.info.hex}</Text>
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
-          )}
-        </SafeAreaView>
-      </View>
+      <SavedColorsScreen
+        entries={savedColors}
+        onBack={() => setShowSaved(false)}
+        onRemove={remove}
+        onLabel={setLabel}
+      />
     );
   }
 
@@ -895,6 +1032,26 @@ const styles = StyleSheet.create({
   nPillTextActive: { color: '#fff' },
 
   nSwatchStrip: { height: 5, width: '100%' },
+
+  // --- Saved colours screen (shared) ---
+  savedHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 20, paddingTop: 16, marginBottom: 16,
+  },
+  savedEmpty: { color: COLORS.textMuted, textAlign: 'center', marginTop: 40, fontSize: 16 },
+  savedRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  savedThumb: { width: 56, height: 56, borderRadius: 10 },
+  savedSwatchBar: { width: 6, height: 56, borderRadius: 3, marginLeft: 6, marginRight: 12 },
+  savedLabelInput: {
+    color: COLORS.text, fontSize: 13, marginTop: 4,
+    paddingVertical: 2, paddingHorizontal: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.2)',
+  },
+  savedDelete: { paddingLeft: 12, paddingVertical: 8 },
 
   // --- Filter chips (shared) ---
   filterToggleRow: { paddingHorizontal: 24, paddingBottom: 6 },
