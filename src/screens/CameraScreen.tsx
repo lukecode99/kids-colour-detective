@@ -11,19 +11,20 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
-let CameraView: any = null;
-let useCameraPermissions: any = null;
+// vision-camera scan loop (CD-10): a frame processor reads the centre
+// pixels straight off the preview stream — no shutter, no photo files.
+// Native-only modules, so the requires stay guarded for the web bundle.
+let VisionCamera: any = null;
+let WorkletsCore: any = null;
 let ImageManipulator: any = null;
 
 if (Platform.OS !== 'web') {
-  const cam = require('expo-camera');
-  CameraView = cam.CameraView;
-  useCameraPermissions = cam.useCameraPermissions;
+  VisionCamera = require('react-native-vision-camera');
+  WorkletsCore = require('react-native-worklets-core');
   ImageManipulator = require('expo-image-manipulator');
 }
 
 import { getColorInfo, ColorInfo } from '../utils/colorNames';
-import { extractAllPixelsFromPng } from '../utils/pngPixel';
 import { matchPaintsLab, PaintMatch } from '../utils/paintMatcher';
 import { rgbToLab } from '../utils/colorMath';
 import { Rgb, medianRgb } from '../utils/photoSample';
@@ -44,7 +45,8 @@ import { COLORS, FONTS } from '../theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-const SCAN_INTERVAL_MS = 1500;
+const SCAN_INTERVAL_MS = 1500; // web fallback loop only
+const SCAN_FPS = 5; // native frame-processor readings — one every 200ms
 const CROSSHAIR_SIZE = 140;
 const SAMPLE_N = 9; // 9×9 median window for the centre reading
 
@@ -378,14 +380,21 @@ export default function CameraScreen() {
 }
 
 function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
-  const [permission, requestPermission] = useCameraPermissions();
+  const { useCameraDevice, useCameraFormat, useCameraPermission, useFrameProcessor, runAtTargetFps } =
+    VisionCamera;
+  const { useRunOnJS } = WorkletsCore;
+
+  const { hasPermission, requestPermission } = useCameraPermission();
+  const device = useCameraDevice('back');
+  // A modest video format: the frame processor only reads 81 centre pixels,
+  // so 720p keeps the per-frame buffer copy cheap without hurting accuracy.
+  const format = useCameraFormat(device, [{ videoResolution: { width: 1280, height: 720 } }]);
   const [colorInfo, setColorInfo] = useState<ColorInfo>({
     name: 'Detecting…',
     hex: '#808080',
     emoji: '🔍',
   });
   const [matches, setMatches] = useState<PaintMatch[]>([]);
-  const [isScanning, setIsScanning] = useState(false);
   const [whiteRefMode, setWhiteRefMode] = useState<WhiteRefMode>('off');
   const [rawRgb, setRawRgb] = useState<Rgb>([128, 128, 128]);
   const [torchOn, setTorchOn] = useState(false);
@@ -393,16 +402,13 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   const { candidates } = usePaintFilters();
 
   const cameraRef = useRef<any>(null);
-  const scanningRef = useRef(false);
   const historyRef = useRef<Rgb[]>([]);
   const rawRgbRef = useRef<Rgb>([128, 128, 128]);
   const whiteRefValueRef = useRef<WhiteRef | null>(null);
   const whiteRefModeRef = useRef<WhiteRefMode>('off');
   whiteRefModeRef.current = whiteRefMode;
-  const lastPhotoUriRef = useRef<string | null>(null);
 
   const breathScale = useRef(new Animated.Value(1)).current;
-  const scanOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     const anim = Animated.loop(
@@ -415,89 +421,73 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
     return () => anim.stop();
   }, [breathScale]);
 
-  useEffect(() => {
-    if (isScanning) {
-      const pulse = Animated.loop(
-        Animated.sequence([
-          Animated.timing(scanOpacity, { toValue: 0.4, duration: 300, useNativeDriver: true }),
-          Animated.timing(scanOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-        ])
-      );
-      pulse.start();
-      return () => pulse.stop();
-    } else {
-      scanOpacity.setValue(1);
-    }
-  }, [isScanning, scanOpacity]);
-
-  const scanColor = useCallback(async () => {
-    if (scanningRef.current || !cameraRef.current) return;
-    scanningRef.current = true;
-    setIsScanning(true);
-
-    try {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.3,
-        base64: false,
-        skipProcessing: true,
-      });
-
-      if (!photo) return;
-      lastPhotoUriRef.current = photo.uri;
-
-      // Centre crop → 9×9 median (not a 1×1 mean): one speckle or edge
-      // pixel can no longer swing the reading.
-      const imgW = photo.width;
-      const imgH = photo.height;
-      const cropW = Math.floor(imgW * 0.15);
-      const cropH = Math.floor(imgH * 0.15);
-      const originX = Math.floor((imgW - cropW) / 2);
-      const originY = Math.floor((imgH - cropH) / 2);
-
-      const centerResult = await ImageManipulator.manipulateAsync(
-        photo.uri,
-        [
-          { crop: { originX, originY, width: cropW, height: cropH } },
-          { resize: { width: SAMPLE_N, height: SAMPLE_N } },
-        ],
-        { format: ImageManipulator.SaveFormat.PNG, base64: true }
-      );
-
-      if (centerResult.base64) {
-        const pixels = extractAllPixelsFromPng(centerResult.base64, SAMPLE_N, SAMPLE_N);
-        const raw = medianRgb(pixels.flat() as Rgb[]);
-        rawRgbRef.current = raw;
-        setRawRgb(raw);
-
-        // Median over recent steady frames irons out frame-to-frame wobble
-        // so the same wall keeps the same top match.
-        historyRef.current = pushReading(historyRef.current, raw);
-        const stable = isStable(historyRef.current);
-        setIsUnstable(historyRef.current.length >= 2 && !stable);
-
-        let [r, g, b] = stabilizedRgb(historyRef.current);
-        if (whiteRefModeRef.current === 'locked' && whiteRefValueRef.current) {
-          [r, g, b] = applyWhiteRef([r, g, b], whiteRefValueRef.current);
-        }
-
-        const info = getColorInfo(r, g, b, true);
-        setColorInfo(info);
-        setMatches(matchPaintsLab(rgbToLab(r, g, b), 5, candidates));
-        // Feed the Matches / Palettes tabs.
-        setCurrentColour({ rgb: [r, g, b], hex: info.hex, name: info.name });
+  // JS half of the scan loop: the worklet hands over SAMPLE_N×SAMPLE_N RGB
+  // triplets and the CD-6 pipeline (median → stability window → white-card
+  // correction) runs exactly as it did for the old photo-based loop.
+  const onSample = useRunOnJS(
+    (flat: number[]) => {
+      const pixels: Rgb[] = [];
+      for (let i = 0; i + 2 < flat.length; i += 3) {
+        pixels.push([flat[i], flat[i + 1], flat[i + 2]]);
       }
-    } catch {
-      // Silently continue
-    } finally {
-      scanningRef.current = false;
-      setIsScanning(false);
-    }
-  }, [candidates]);
+      const raw = medianRgb(pixels);
+      rawRgbRef.current = raw;
+      setRawRgb(raw);
 
-  useEffect(() => {
-    const interval = setInterval(scanColor, SCAN_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [scanColor]);
+      // Median over recent steady frames irons out frame-to-frame wobble
+      // so the same wall keeps the same top match.
+      historyRef.current = pushReading(historyRef.current, raw);
+      const stable = isStable(historyRef.current);
+      setIsUnstable(historyRef.current.length >= 2 && !stable);
+
+      let [r, g, b] = stabilizedRgb(historyRef.current);
+      if (whiteRefModeRef.current === 'locked' && whiteRefValueRef.current) {
+        [r, g, b] = applyWhiteRef([r, g, b], whiteRefValueRef.current);
+      }
+
+      const info = getColorInfo(r, g, b, true);
+      setColorInfo(info);
+      setMatches(matchPaintsLab(rgbToLab(r, g, b), 5, candidates));
+      // Feed the Matches / Saved tabs.
+      setCurrentColour({ rgb: [r, g, b], hex: info.hex, name: info.name });
+    },
+    [candidates]
+  );
+
+  // With pixelFormat="rgb", iOS delivers BGRA bytes and Android RGBA —
+  // hence the per-platform channel order below.
+  const isIOS = Platform.OS === 'ios';
+  const frameProcessor = useFrameProcessor(
+    (frame: any) => {
+      'worklet';
+      runAtTargetFps(SCAN_FPS, () => {
+        'worklet';
+        const data = new Uint8Array(frame.toArrayBuffer());
+        const bpr = frame.bytesPerRow;
+        // 9×9 grid over the centre 15% region — same sampling window the
+        // photo crop used, read directly from the preview frame.
+        const rw = frame.width * 0.15;
+        const rh = frame.height * 0.15;
+        const x0 = (frame.width - rw) / 2;
+        const y0 = (frame.height - rh) / 2;
+        const flat: number[] = [];
+        for (let gy = 0; gy < SAMPLE_N; gy++) {
+          for (let gx = 0; gx < SAMPLE_N; gx++) {
+            const x = Math.floor(x0 + ((gx + 0.5) * rw) / SAMPLE_N);
+            const y = Math.floor(y0 + ((gy + 0.5) * rh) / SAMPLE_N);
+            const i = y * bpr + x * 4;
+            if (isIOS) {
+              flat.push(data[i + 2], data[i + 1], data[i]);
+            } else {
+              flat.push(data[i], data[i + 1], data[i + 2]);
+            }
+          }
+        }
+        onSample(flat);
+      });
+    },
+    [onSample, isIOS]
+  );
 
   const handleWhiteRefPress = useCallback(() => {
     setWhiteRefMode(mode => {
@@ -514,20 +504,22 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   }, []);
 
   const saveColor = useCallback(async () => {
-    // Small centre-crop thumbnail from the most recent scan photo; the
-    // camera cache file is temporary, so savedColors copies it to app storage.
+    // The scan loop no longer produces photo files, so grab a preview
+    // snapshot (no shutter) for the thumbnail; the snapshot file is
+    // temporary, so savedColors copies it to app storage.
     let thumb: string | undefined;
-    const uri = lastPhotoUriRef.current;
-    if (uri) {
-      try {
+    try {
+      const snap = await cameraRef.current?.takeSnapshot({ quality: 70 });
+      if (snap?.path) {
+        const uri = snap.path.startsWith('file://') ? snap.path : `file://${snap.path}`;
         const t = await ImageManipulator.manipulateAsync(
           uri,
           [{ resize: { width: 96 } }],
           { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
         );
         thumb = t.uri;
-      } catch {}
-    }
+      }
+    } catch {}
     addSavedColor(
       {
         id: newSavedColorId(),
@@ -541,15 +533,7 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
     );
   }, [colorInfo, matches]);
 
-  if (!permission) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.permText}>Checking camera permission…</Text>
-      </View>
-    );
-  }
-
-  if (!permission.granted) {
+  if (!hasPermission) {
     return (
       <View style={styles.centered}>
         <Text style={styles.permTitle}>📷 Camera Access Needed</Text>
@@ -563,12 +547,36 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
     );
   }
 
+  if (!device) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.permTitle}>📷 No camera found</Text>
+        <Text style={styles.permText}>
+          This device doesn't have a back camera — try picking a spot on a photo instead.
+        </Text>
+        <TouchableOpacity style={styles.permButton} onPress={onOpenPhoto}>
+          <Text style={styles.permButtonText}>🖼 Open a Photo</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const { Camera } = VisionCamera;
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
 
-      {/* Full-screen camera */}
-      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" torch={torchOn ? 'on' : 'off'} />
+      {/* Full-screen camera with the live scan-loop frame processor */}
+      <Camera
+        ref={cameraRef}
+        style={StyleSheet.absoluteFill}
+        device={device}
+        format={format}
+        isActive
+        torch={device.hasTorch && torchOn ? 'on' : 'off'}
+        frameProcessor={frameProcessor}
+        pixelFormat="rgb"
+      />
 
       {/* Top-left: colour name overlay — tappable to save */}
       <SafeAreaView style={styles.nTopLeft} pointerEvents="box-none">
@@ -602,7 +610,7 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       {/* Centre crosshair */}
       <View style={styles.crosshairContainer} pointerEvents="none">
         <Animated.View
-          style={[styles.crosshairOuter, { transform: [{ scale: breathScale }], opacity: scanOpacity }]}
+          style={[styles.crosshairOuter, { transform: [{ scale: breathScale }] }]}
         >
           <View style={styles.circle} />
           <View style={styles.crossHorizontal} />

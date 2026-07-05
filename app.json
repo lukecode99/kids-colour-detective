@@ -25,7 +25,14 @@
       ]
     },
     "plugins": [
-      "expo-camera"
+      "expo-camera",
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "Point the camera at a wall or surface to find the closest matching paint colour.",
+          "enableMicrophonePermission": false
+        }
+      ]
     ],
     "extra": {
       "eas": {
