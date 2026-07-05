@@ -4,7 +4,6 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Animated,
   Dimensions,
   SafeAreaView,
   Platform,
@@ -39,6 +38,7 @@ import {
 } from '../utils/scanQuality';
 import { bestMatchLabel, usePaintFilters } from '../components/paintMatchUI';
 import { bestMatchInfo } from '../utils/matchLabel';
+import CaptureReticle from '../components/CaptureReticle';
 import PhotoPickerScreen from './PhotoPickerScreen';
 import { addSavedColor, newSavedColorId } from '../utils/savedColors';
 import { setCurrentColour } from '../utils/currentColour';
@@ -48,7 +48,6 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const SCAN_INTERVAL_MS = 1500; // web fallback loop only
 const SCAN_FPS = 5; // native frame-processor readings — one every 200ms
-const CROSSHAIR_SIZE = 140;
 const SAMPLE_N = 9; // 9×9 median window for the centre reading
 
 type WhiteRefMode = 'off' | 'calibrating' | 'locked';
@@ -137,19 +136,6 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   const whiteRefValueRef = useRef<WhiteRef | null>(null);
   const whiteRefModeRef = useRef<WhiteRefMode>('off');
   whiteRefModeRef.current = whiteRefMode;
-
-  const breathScale = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(breathScale, { toValue: 1.12, duration: 1000, useNativeDriver: true }),
-        Animated.timing(breathScale, { toValue: 1, duration: 1000, useNativeDriver: true }),
-      ])
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [breathScale]);
 
   useEffect(() => {
     let stream: any;
@@ -322,13 +308,8 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         </View>
       </SafeAreaView>
 
-      <View style={styles.crosshairContainer} pointerEvents="none">
-        <Animated.View style={[styles.crosshairOuter, { transform: [{ scale: breathScale }] }]}>
-          <View style={styles.circle} />
-          <View style={styles.crossHorizontal} />
-          <View style={styles.crossVertical} />
-        </Animated.View>
-      </View>
+      {/* Tappable capture reticle (CD-12) */}
+      <CaptureReticle onCapture={saveColor} disabled={whiteRefMode === 'calibrating'} />
 
       {whiteRefMode === 'calibrating' && (
         <CalibrationOverlay
@@ -409,19 +390,6 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   const whiteRefValueRef = useRef<WhiteRef | null>(null);
   const whiteRefModeRef = useRef<WhiteRefMode>('off');
   whiteRefModeRef.current = whiteRefMode;
-
-  const breathScale = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(breathScale, { toValue: 1.12, duration: 1000, useNativeDriver: true }),
-        Animated.timing(breathScale, { toValue: 1, duration: 1000, useNativeDriver: true }),
-      ])
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [breathScale]);
 
   // JS half of the scan loop: the worklet hands over SAMPLE_N×SAMPLE_N RGB
   // triplets and the CD-6 pipeline (median → stability window → white-card
@@ -610,16 +578,8 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         </View>
       </SafeAreaView>
 
-      {/* Centre crosshair */}
-      <View style={styles.crosshairContainer} pointerEvents="none">
-        <Animated.View
-          style={[styles.crosshairOuter, { transform: [{ scale: breathScale }] }]}
-        >
-          <View style={styles.circle} />
-          <View style={styles.crossHorizontal} />
-          <View style={styles.crossVertical} />
-        </Animated.View>
-      </View>
+      {/* Centre crosshair — tappable capture control (CD-12) */}
+      <CaptureReticle onCapture={saveColor} disabled={whiteRefMode === 'calibrating'} />
 
       {/* Stability indicator — below crosshair, above bottom panel */}
       {isUnstable && (
@@ -755,20 +715,6 @@ const styles = StyleSheet.create({
     color: '#FFD700', fontSize: 12, fontWeight: '700',
     paddingHorizontal: 20, paddingTop: 8,
   },
-
-  // --- Crosshair (shared) ---
-  crosshairContainer: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  crosshairOuter: { width: CROSSHAIR_SIZE, height: CROSSHAIR_SIZE, alignItems: 'center', justifyContent: 'center' },
-  circle: {
-    position: 'absolute', width: CROSSHAIR_SIZE, height: CROSSHAIR_SIZE,
-    borderRadius: CROSSHAIR_SIZE / 2, borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.8)', backgroundColor: 'transparent',
-  },
-  crossHorizontal: { position: 'absolute', width: 20, height: 2, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 1 },
-  crossVertical: { position: 'absolute', width: 2, height: 20, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 1 },
 
   // --- Native layout styles (NativeCameraScreen) ---
   nTopLeft: {
