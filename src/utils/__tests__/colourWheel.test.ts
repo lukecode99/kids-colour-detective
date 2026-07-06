@@ -237,12 +237,54 @@ describe('larger markers + capture photo (CD-24)', () => {
 
   it('non-overlapping pairs at the new size stay individually tappable', () => {
     // Two markers whose centres sit 22px apart — visually separate at 20px.
-    const a = { id: 'a', hex: '#111111', name: 'A', h: 0, s: 0.5, x: 100, y: 100 };
-    const b = { id: 'b', hex: '#222222', name: 'B', h: 0, s: 0.5, x: 122, y: 100 };
+    const a = { id: 'a', hex: '#111111', name: 'A', h: 0, s: 0.5, l: 0.5, x: 100, y: 100 };
+    const b = { id: 'b', hex: '#222222', name: 'B', h: 0, s: 0.5, l: 0.5, x: 122, y: 100 };
     expect(hitMarker(a.x, a.y, [a, b])?.id).toBe('a');
     expect(hitMarker(b.x, b.y, [a, b])?.id).toBe('b');
     // A tap between them resolves to whichever is nearer, never the wrong one.
     expect(hitMarker(108, 100, [a, b])?.id).toBe('a');
     expect(hitMarker(114, 100, [a, b])?.id).toBe('b');
+  });
+});
+
+// CD-26: tapping a marker selects the capture's EXACT colour — the marker
+// carries the stored colour's lightness so the screen can set pick + slider
+// + committed view in one go (the same shape onSelectPaint uses).
+describe('marker tap drives the full selection (CD-26)', () => {
+  it('markers carry the stored lightness alongside hue/saturation', () => {
+    // Luke's bug report capture: rose #B73F56.
+    const [m] = savedColourMarkers([saved('rose', [183, 63, 86], '#B73F56')], RADIUS);
+    const [r, g, b] = wheelPickToRgb({ h: m.h, s: m.s }, m.l);
+    expect(Math.abs(r - 183)).toBeLessThanOrEqual(1);
+    expect(Math.abs(g - 63)).toBeLessThanOrEqual(1);
+    expect(Math.abs(b - 86)).toBeLessThanOrEqual(1);
+  });
+
+  it('selection reproduces the stored colour across the range, not the tap point approximation', () => {
+    const entries: Array<[string, [number, number, number]]> = [
+      ['skyblue', [183, 210, 237]],
+      ['forest', [34, 90, 40]],
+      ['mustard', [222, 180, 44]],
+      ['charcoal', [52, 52, 56]],
+    ];
+    const markers = savedColourMarkers(
+      entries.map(([id, rgb]) => saved(id, rgb, '#000000')),
+      RADIUS
+    );
+    markers.forEach((m, i) => {
+      const [er, eg, eb] = entries[i][1];
+      const [r, g, b] = wheelPickToRgb({ h: m.h, s: m.s }, m.l);
+      expect(Math.abs(r - er)).toBeLessThanOrEqual(1);
+      expect(Math.abs(g - eg)).toBeLessThanOrEqual(1);
+      expect(Math.abs(b - eb)).toBeLessThanOrEqual(1);
+    });
+  });
+
+  it('legacy hex-only entries expose lightness too', () => {
+    const [m] = savedColourMarkers([saved('legacy', undefined, '#B73F56')], RADIUS);
+    const [r, g, b] = wheelPickToRgb({ h: m.h, s: m.s }, m.l);
+    expect(Math.abs(r - 183)).toBeLessThanOrEqual(1);
+    expect(Math.abs(g - 63)).toBeLessThanOrEqual(1);
+    expect(Math.abs(b - 86)).toBeLessThanOrEqual(1);
   });
 });

@@ -203,10 +203,21 @@ export default function WheelScreen() {
         pinchRef.current = null;
         const { locationX, locationY } = evt.nativeEvent;
         const c = screenToContent(locationX, locationY, viewportRef.current);
-        // A touch on a saved-colour marker identifies that capture; the
-        // pick still moves there, so drags behave exactly as before.
-        // In saved-only mode touches ONLY identify markers (CD-23).
-        setActiveMarker(hitMarker(c.x, c.y, markersRef.current));
+        // A touch on a saved-colour marker selects that capture's exact
+        // colour (CD-26) — pick, slider and the committed view all follow,
+        // same as tapping a goes-with paint. This runs before the CD-23
+        // saved-only guard: a marker tap is an explicit selection, allowed
+        // in every mode that shows markers.
+        const marker = hitMarker(c.x, c.y, markersRef.current);
+        setActiveMarker(marker);
+        if (marker) {
+          const next = { pick: { h: marker.h, s: marker.s }, lightness: marker.l };
+          latest.current = next;
+          setPick(next.pick);
+          setLightness(next.lightness);
+          setCommitted(next);
+          return;
+        }
         if (!allowsPick(modeRef.current)) return;
         latest.current.pick = pointToWheel(c.x, c.y, RADIUS);
         setPick(latest.current.pick);
@@ -420,7 +431,7 @@ export default function WheelScreen() {
           </View>
 
           <View style={styles.sliderRow}>
-            <Text style={styles.sliderLabel}>Darker</Text>
+            <Text style={styles.sliderLabel} numberOfLines={1}>Darker</Text>
             <View
               style={styles.slider}
               onLayout={e => {
@@ -443,7 +454,7 @@ export default function WheelScreen() {
                 style={[styles.sliderThumb, { left: `${lightness * 100}%` }]}
               />
             </View>
-            <Text style={styles.sliderLabel}>Lighter</Text>
+            <Text style={styles.sliderLabel} numberOfLines={1}>Lighter</Text>
           </View>
 
           <View style={styles.previewCard}>
@@ -581,7 +592,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 20, marginBottom: 14,
   },
-  sliderLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', width: 44, textAlign: 'center' },
+  sliderLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', flexShrink: 0, textAlign: 'center' },
   slider: {
     flex: 1, height: SLIDER_H, borderRadius: SLIDER_H / 2, overflow: 'hidden',
     flexDirection: 'row', marginHorizontal: 4,

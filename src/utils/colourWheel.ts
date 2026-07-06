@@ -50,6 +50,7 @@ export interface SavedMarker {
   thumbnailUri?: string; // the captured photo (CD-24) — absent on pre-thumbnail saves
   h: number;
   s: number;
+  l: number; // lightness of the stored colour — a tap selects it exactly (CD-26)
   x: number;
   y: number;
 }
@@ -60,7 +61,7 @@ export function savedColourMarkers(
 ): SavedMarker[] {
   return entries.map(e => {
     const [r, g, b] = e.rgb ?? hexToRgb(e.hex);
-    const [h, s] = rgbToHsl(r, g, b);
+    const [h, s, l] = rgbToHsl(r, g, b);
     const { x, y } = wheelToPoint(h, s, radius);
     return {
       id: e.id,
@@ -69,6 +70,7 @@ export function savedColourMarkers(
       thumbnailUri: e.thumbnailUri,
       h,
       s,
+      l,
       x,
       y,
     };
