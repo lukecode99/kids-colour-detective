@@ -49,6 +49,7 @@ import PhotoPickerScreen from './PhotoPickerScreen';
 import { addSavedColor, newSavedColorId } from '../utils/savedColors';
 import { recordCaptureHintSave } from '../utils/captureHint';
 import { setCurrentColour } from '../utils/currentColour';
+import { SCAN_FOOTER_HINT } from '../utils/scanCopy';
 import { COLORS, FONTS } from '../theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -395,9 +396,7 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         />
         {showFilters && <FiltersPanel filters={filters} onToggle={onToggle} />}
         {showFilters && candidates.length === 0 && <FilterEmptyNotice />}
-        <Text style={styles.scanHintLine}>
-          All matches, filters &amp; buy links live in the My Colours tab
-        </Text>
+        <Text style={styles.scanHintLine}>{SCAN_FOOTER_HINT}</Text>
       </View>
     </View>
   );
@@ -715,9 +714,7 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         />
         {showFilters && <FiltersPanel filters={filters} onToggle={onToggle} />}
         {showFilters && candidates.length === 0 && <FilterEmptyNotice />}
-        <Text style={styles.scanHintLine}>
-          All matches, filters &amp; buy links live in the My Colours tab
-        </Text>
+        <Text style={styles.scanHintLine}>{SCAN_FOOTER_HINT}</Text>
       </View>
     </View>
   );
@@ -884,6 +881,9 @@ const styles = StyleSheet.create({
   scanSubLine: { color: 'rgba(255,255,255,0.4)', fontSize: 14, fontWeight: '600', marginTop: 4 },
   scanHintLine: {
     color: 'rgba(255,255,255,0.35)', fontSize: 12, fontWeight: '600',
+    // The CD-30 sentence is longer than one iPhone-width line at this
+    // size: let it wrap cleanly (no numberOfLines, so never truncated).
+    lineHeight: 16,
     paddingHorizontal: 24, paddingTop: 4, paddingBottom: 2,
   },
 
