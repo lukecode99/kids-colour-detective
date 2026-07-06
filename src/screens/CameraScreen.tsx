@@ -36,7 +36,13 @@ import {
   isPlausibleWhiteRef,
   lightingHint,
 } from '../utils/scanQuality';
-import { bestMatchLabel, usePaintFilters } from '../components/paintMatchUI';
+import {
+  bestMatchLabel,
+  useScanFilters,
+  FilterToggleLine,
+  FiltersPanel,
+  FilterEmptyNotice,
+} from '../components/paintMatchUI';
 import { bestMatchInfo } from '../utils/matchLabel';
 import CaptureReticle from '../components/CaptureReticle';
 import PhotoPickerScreen from './PhotoPickerScreen';
@@ -139,7 +145,10 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   const [rawRgb, setRawRgb] = useState<Rgb>([128, 128, 128]);
   const [calibRgb, setCalibRgb] = useState<Rgb>([128, 128, 128]);
   const [calibStable, setCalibStable] = useState(false);
-  const { filters, candidates } = usePaintFilters();
+  // CD-29: the scan page runs on its own persisted filter set, decoupled
+  // from the My Colours / photo-picker globals.
+  const { filters, onToggle, candidates } = useScanFilters();
+  const [showFilters, setShowFilters] = useState(false);
   // Snapshot for saveColor, whose deps stay [] via the functional setState.
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
@@ -276,7 +285,8 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
           match: bestMatchLabel(cs.matches),
           bestMatch: bestMatchInfo(cs.matches),
           timestamp: Date.now(),
-          // CD-20: the globals seed the capture's own filter set at save.
+          // CD-20 seeding, via the scan page's own set since CD-29: what was
+        // matched on screen is what the capture starts filtered by.
           filters: filtersRef.current,
         },
         thumb
@@ -348,34 +358,47 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         />
       )}
 
-      <TouchableOpacity style={styles.bottomPanel} onPress={saveColor} activeOpacity={0.85}>
-        <View style={[styles.swatchStrip, { backgroundColor: colorInfo.hex }]} />
-        {(() => {
-          const hint = lightingHint(rawRgb);
-          return hint && !torchOn && whiteRefMode !== 'calibrating' ? (
-            <Text style={styles.lightHintText}>{hintLabel(hint, torchSupported)}</Text>
-          ) : null;
-        })()}
-        <View style={styles.colorInfoRow}>
-          <View style={styles.colorTextBlock}>
-            <Text style={[FONTS.colorName, styles.colorNameText]} numberOfLines={2}>
-              {matches[0] ? matches[0].paint.name : colorInfo.name}
-            </Text>
-            <Text style={[FONTS.colorNameSub, styles.hexText]}>
-              {matches[0]
-                ? `${matches[0].paint.brand} · ${matches[0].matchPercent}% match · ${matches[0].closeness}`
-                : colorInfo.hex}
-            </Text>
-            <Text style={styles.scanSubLine}>
-              {colorInfo.name} · {colorInfo.hex}
-            </Text>
+      <View style={styles.bottomPanel}>
+        {/* Save area: swatch + name block stay tappable; the filter rows
+            below are their own controls (CD-29), outside the save touch. */}
+        <TouchableOpacity onPress={saveColor} activeOpacity={0.85}>
+          <View style={[styles.swatchStrip, { backgroundColor: colorInfo.hex }]} />
+          {(() => {
+            const hint = lightingHint(rawRgb);
+            return hint && !torchOn && whiteRefMode !== 'calibrating' ? (
+              <Text style={styles.lightHintText}>{hintLabel(hint, torchSupported)}</Text>
+            ) : null;
+          })()}
+          <View style={styles.colorInfoRow}>
+            <View style={styles.colorTextBlock}>
+              <Text style={[FONTS.colorName, styles.colorNameText]} numberOfLines={2}>
+                {matches[0] ? matches[0].paint.name : colorInfo.name}
+              </Text>
+              <Text style={[FONTS.colorNameSub, styles.hexText]}>
+                {matches[0]
+                  ? `${matches[0].paint.brand} · ${matches[0].matchPercent}% match · ${matches[0].closeness}`
+                  : colorInfo.hex}
+              </Text>
+              <Text style={styles.scanSubLine}>
+                {colorInfo.name} · {colorInfo.hex}
+              </Text>
+            </View>
+            <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginLeft: 8 }}>tap to save</Text>
           </View>
-          <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginLeft: 8 }}>tap to save</Text>
-        </View>
+        </TouchableOpacity>
+        {/* Scan-only filters (CD-29) */}
+        <FilterToggleLine
+          filters={filters}
+          candidateCount={candidates.length}
+          expanded={showFilters}
+          onPress={() => setShowFilters(s => !s)}
+        />
+        {showFilters && <FiltersPanel filters={filters} onToggle={onToggle} />}
+        {showFilters && candidates.length === 0 && <FilterEmptyNotice />}
         <Text style={styles.scanHintLine}>
           All matches, filters &amp; buy links live in the My Colours tab
         </Text>
-      </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -413,7 +436,10 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   const [torchOn, setTorchOn] = useState(false);
   const [isUnstable, setIsUnstable] = useState(false);
   const [calibStable, setCalibStable] = useState(false);
-  const { filters, candidates } = usePaintFilters();
+  // CD-29: the scan page runs on its own persisted filter set, decoupled
+  // from the My Colours / photo-picker globals.
+  const { filters, onToggle, candidates } = useScanFilters();
+  const [showFilters, setShowFilters] = useState(false);
 
   const cameraRef = useRef<any>(null);
   const historyRef = useRef<Rgb[]>([]);
@@ -537,7 +563,8 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         match: bestMatchLabel(matches),
         bestMatch: bestMatchInfo(matches),
         timestamp: Date.now(),
-        // CD-20: the globals seed the capture's own filter set at save.
+        // CD-20 seeding, via the scan page's own set since CD-29: what was
+        // matched on screen is what the capture starts filtered by.
         filters,
       },
       thumb
@@ -679,6 +706,15 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
           </Text>
           <Text style={styles.nMatchHex}>{colorInfo.hex}</Text>
         </View>
+        {/* Scan-only filters (CD-29) */}
+        <FilterToggleLine
+          filters={filters}
+          candidateCount={candidates.length}
+          expanded={showFilters}
+          onPress={() => setShowFilters(s => !s)}
+        />
+        {showFilters && <FiltersPanel filters={filters} onToggle={onToggle} />}
+        {showFilters && candidates.length === 0 && <FilterEmptyNotice />}
         <Text style={styles.scanHintLine}>
           All matches, filters &amp; buy links live in the My Colours tab
         </Text>

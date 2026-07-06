@@ -14,6 +14,8 @@ import {
   toggleFilter,
   loadFilters,
   saveFilters,
+  loadScanFilters,
+  saveScanFilters,
   BRAND_OPTIONS,
   SURFACE_OPTIONS,
   FINISH_OPTIONS,
@@ -126,25 +128,42 @@ export function FilterEmptyNotice() {
   return <Text style={styles.filterEmptyText}>No paints match these filters</Text>;
 }
 
-// Loads persisted filters once and saves on every change.
-export function usePaintFilters() {
+// Loads persisted filters once and saves on every change. Parameterised by
+// storage pair so the scan page's set stays independent of the global one.
+function usePersistedFilters(
+  load: () => Promise<PaintFilters>,
+  save: (filters: PaintFilters) => Promise<void>
+) {
   const [filters, setFilters] = useState<PaintFilters>(EMPTY_FILTERS);
 
   useEffect(() => {
-    loadFilters().then(setFilters);
-  }, []);
+    load().then(setFilters);
+  }, [load]);
 
-  const onToggle = useCallback((group: keyof PaintFilters, value: string) => {
-    setFilters(f => {
-      const next = toggleFilter(f, group, value);
-      saveFilters(next);
-      return next;
-    });
-  }, []);
+  const onToggle = useCallback(
+    (group: keyof PaintFilters, value: string) => {
+      setFilters(f => {
+        const next = toggleFilter(f, group, value);
+        save(next);
+        return next;
+      });
+    },
+    [save]
+  );
 
   const candidates = useMemo(() => applyFilters(PAINTS, filters), [filters]);
 
   return { filters, onToggle, candidates };
+}
+
+// Global filters: photo picker, colour wheel, and CD-20 capture seeding.
+export function usePaintFilters() {
+  return usePersistedFilters(loadFilters, saveFilters);
+}
+
+// CD-29: the scan page's own filter set — separate storage, defaults to All.
+export function useScanFilters() {
+  return usePersistedFilters(loadScanFilters, saveScanFilters);
 }
 
 const styles = StyleSheet.create({

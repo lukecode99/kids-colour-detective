@@ -7,6 +7,8 @@ import {
   toggleFilter,
   loadFilters,
   saveFilters,
+  loadScanFilters,
+  saveScanFilters,
   BRAND_OPTIONS,
   SURFACE_OPTIONS,
   FINISH_OPTIONS,
@@ -101,5 +103,52 @@ describe('filter persistence', () => {
   it('returns empty filters on corrupt stored data', async () => {
     await AsyncStorage.setItem('paintFilters.v1', 'not json {');
     expect(await loadFilters()).toEqual(EMPTY_FILTERS);
+  });
+});
+
+describe('scan filter decoupling (CD-29)', () => {
+  beforeEach(() => AsyncStorage.clear());
+
+  it('scan filters default to All (empty) even when global filters are set', async () => {
+    await saveFilters({ ...EMPTY_FILTERS, brands: ['Dulux'], surfaces: ['wood'] });
+    expect(await loadScanFilters()).toEqual(EMPTY_FILTERS);
+  });
+
+  it('changing scan filters never changes the global set, and vice versa', async () => {
+    const globals = { brands: ['Farrow & Ball'], surfaces: [], finishes: ['matt'] };
+    const scan = { brands: [], surfaces: ['exterior masonry'], finishes: [] };
+    await saveFilters(globals);
+    await saveScanFilters(scan);
+
+    // Each side reads back exactly what it wrote.
+    expect(await loadFilters()).toEqual(globals);
+    expect(await loadScanFilters()).toEqual(scan);
+
+    // Updating one leaves the other untouched.
+    await saveScanFilters(toggleFilter(scan, 'brands', 'Crown'));
+    expect(await loadFilters()).toEqual(globals);
+    await saveFilters(toggleFilter(globals, 'finishes', 'gloss'));
+    expect((await loadScanFilters()).brands).toEqual(['Crown']);
+  });
+
+  it('scan filters round-trip through their own key (survive restart)', async () => {
+    const scan = { brands: ['Little Greene'], surfaces: ['interior wall'], finishes: [] };
+    await saveScanFilters(scan);
+    expect(await AsyncStorage.getItem('scanFilters.v1')).not.toBeNull();
+    expect(await loadScanFilters()).toEqual(scan);
+  });
+
+  it('scan-filtered candidates through the matcher honour only the scan set', async () => {
+    await saveFilters({ ...EMPTY_FILTERS, brands: ['Hammerite'] });
+    await saveScanFilters({ ...EMPTY_FILTERS, brands: ['Dulux'] });
+    const candidates = applyFilters(PAINTS, await loadScanFilters());
+    const matches = matchPaintsLab(rgbToLab(200, 180, 160), 5, candidates);
+    expect(matches).toHaveLength(5);
+    for (const m of matches) expect(m.paint.brand).toBe('Dulux');
+  });
+
+  it('returns empty scan filters on corrupt stored data', async () => {
+    await AsyncStorage.setItem('scanFilters.v1', '{oops');
+    expect(await loadScanFilters()).toEqual(EMPTY_FILTERS);
   });
 });

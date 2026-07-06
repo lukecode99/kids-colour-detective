@@ -60,10 +60,13 @@ export function toggleFilter(filters: PaintFilters, group: keyof PaintFilters, v
 }
 
 const STORAGE_KEY = 'paintFilters.v1';
+// CD-29: the scan page keeps its own filter set, decoupled from the
+// My Colours / photo-picker globals — stored under its own key.
+const SCAN_STORAGE_KEY = 'scanFilters.v1';
 
-export async function loadFilters(): Promise<PaintFilters> {
+async function loadFiltersFrom(key: string): Promise<PaintFilters> {
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    const raw = await AsyncStorage.getItem(key);
     if (!raw) return EMPTY_FILTERS;
     const parsed = JSON.parse(raw);
     return {
@@ -76,10 +79,26 @@ export async function loadFilters(): Promise<PaintFilters> {
   }
 }
 
-export async function saveFilters(filters: PaintFilters): Promise<void> {
+async function saveFiltersTo(key: string, filters: PaintFilters): Promise<void> {
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
+    await AsyncStorage.setItem(key, JSON.stringify(filters));
   } catch {
     // persistence is best-effort; scanning must never break on storage errors
   }
+}
+
+export async function loadFilters(): Promise<PaintFilters> {
+  return loadFiltersFrom(STORAGE_KEY);
+}
+
+export async function saveFilters(filters: PaintFilters): Promise<void> {
+  return saveFiltersTo(STORAGE_KEY, filters);
+}
+
+export async function loadScanFilters(): Promise<PaintFilters> {
+  return loadFiltersFrom(SCAN_STORAGE_KEY);
+}
+
+export async function saveScanFilters(filters: PaintFilters): Promise<void> {
+  return saveFiltersTo(SCAN_STORAGE_KEY, filters);
 }
