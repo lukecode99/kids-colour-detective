@@ -7,6 +7,9 @@
 // CD-23: a persisted display filter picks what the face shows — All,
 // Saved colours only (chrome hidden, markers prominent), or Wheel only
 // (no markers).
+// CD-25: pinch-zoom + two-finger pan for fine-grained selection. Touches
+// map through the viewport into content coordinates, so picking, markers
+// and hit targets all transform together; +/− buttons cover the web.
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   StyleSheet,
@@ -44,6 +47,15 @@ import {
   loadWheelDisplayMode,
   saveWheelDisplayMode,
 } from '../utils/wheelDisplay';
+import {
+  WheelViewport,
+  ZOOM_STEP,
+  resetViewport,
+  isZoomed,
+  screenToContent,
+  pinchViewport,
+  panViewport,
+} from '../utils/wheelZoom';
 import { Paint } from '../utils/paintMatcher';
 import PaletteIdeas from '../components/PaletteIdeas';
 import CoverageCalculator from '../components/CoverageCalculator';
@@ -67,6 +79,16 @@ const SLIDER_H = 28;
 // stutter; the preview swatch tracks every event, the heavy recompute is
 // throttled to this interval (and always runs on release).
 const RECOMPUTE_MS = 150;
+
+// Distance + midpoint of the first two touches, in wheel-local coordinates.
+function pinchFrom(touches: { locationX: number; locationY: number }[]) {
+  const [a, b] = touches;
+  return {
+    dist: Math.max(1, Math.hypot(a.locationX - b.locationX, a.locationY - b.locationY)),
+    cx: (a.locationX + b.locationX) / 2,
+    cy: (a.locationY + b.locationY) / 2,
+  };
+}
 
 // The wheel face: reference dots at every 30° hue across three saturation
 // rings (plus a neutral centre), all plain Views — no gradient/SVG deps.
@@ -148,30 +170,84 @@ export default function WheelScreen() {
     setCommitted({ ...latest.current });
   }, []);
 
+  // CD-25: zoom viewport. The responder is created once, so it reads the
+  // viewport through a ref; the ref is written synchronously in the pinch
+  // handler so successive move events within one frame compose correctly.
+  const [viewport, setViewport] = useState<WheelViewport>(resetViewport());
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
+  const pinchRef = useRef<{ dist: number; cx: number; cy: number } | null>(null);
+  const applyViewport = useCallback((vp: WheelViewport) => {
+    viewportRef.current = vp;
+    setViewport(vp);
+  }, []);
+  // The +/− buttons zoom about the wheel centre — the web fallback, and a
+  // no-pinch alternative anywhere.
+  const zoomBy = useCallback(
+    (factor: number) =>
+      applyViewport(pinchViewport(viewportRef.current, RADIUS, RADIUS, factor, WHEEL_SIZE)),
+    [applyViewport]
+  );
+  const resetZoom = useCallback(() => applyViewport(resetViewport()), [applyViewport]);
+
   const wheelResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: evt => {
+        // Two fingers zoom/pan (CD-25); one finger picks, as ever.
+        if (evt.nativeEvent.touches.length >= 2) {
+          pinchRef.current = pinchFrom(evt.nativeEvent.touches);
+          return;
+        }
+        pinchRef.current = null;
         const { locationX, locationY } = evt.nativeEvent;
+        const c = screenToContent(locationX, locationY, viewportRef.current);
         // A touch on a saved-colour marker identifies that capture; the
         // pick still moves there, so drags behave exactly as before.
         // In saved-only mode touches ONLY identify markers (CD-23).
-        setActiveMarker(hitMarker(locationX, locationY, markersRef.current));
+        setActiveMarker(hitMarker(c.x, c.y, markersRef.current));
         if (!allowsPick(modeRef.current)) return;
-        latest.current.pick = pointToWheel(locationX, locationY, RADIUS);
+        latest.current.pick = pointToWheel(c.x, c.y, RADIUS);
         setPick(latest.current.pick);
         commit(false);
       },
       onPanResponderMove: evt => {
+        const { touches } = evt.nativeEvent;
+        if (touches.length >= 2) {
+          const next = pinchFrom(touches);
+          const prev = pinchRef.current;
+          pinchRef.current = next;
+          if (!prev) return; // second finger just landed — baseline only
+          let vp = pinchViewport(
+            viewportRef.current,
+            prev.cx,
+            prev.cy,
+            next.dist / prev.dist,
+            WHEEL_SIZE
+          );
+          vp = panViewport(vp, next.cx - prev.cx, next.cy - prev.cy, WHEEL_SIZE);
+          applyViewport(vp);
+          return;
+        }
+        // A finger just lifted off a pinch: swallow the leftover single
+        // touch so the pick doesn't jump across the wheel.
+        if (pinchRef.current) return;
         if (!allowsPick(modeRef.current)) return;
         const { locationX, locationY } = evt.nativeEvent;
-        latest.current.pick = pointToWheel(locationX, locationY, RADIUS);
+        const c = screenToContent(locationX, locationY, viewportRef.current);
+        latest.current.pick = pointToWheel(c.x, c.y, RADIUS);
         setPick(latest.current.pick);
         commit(false);
       },
-      onPanResponderRelease: () => commit(true),
-      onPanResponderTerminate: () => commit(true),
+      onPanResponderRelease: () => {
+        pinchRef.current = null;
+        commit(true);
+      },
+      onPanResponderTerminate: () => {
+        pinchRef.current = null;
+        commit(true);
+      },
     })
   ).current;
 
@@ -262,26 +338,58 @@ export default function WheelScreen() {
               style={[styles.wheel, displayMode === 'saved' && styles.wheelDimmed]}
               {...wheelResponder.panHandlers}
             >
-              {wheelChromeVisible(displayMode) && <WheelDots />}
-              {visibleMarkers.map(m => (
-                <View
-                  key={m.id}
-                  pointerEvents="none"
-                  style={[
-                    styles.marker,
-                    { left: m.x - MARKER / 2, top: m.y - MARKER / 2, backgroundColor: m.hex },
-                    activeMarker?.id === m.id && styles.markerActive,
-                  ]}
-                />
-              ))}
-              {wheelChromeVisible(displayMode) && (
-                <View
-                  pointerEvents="none"
-                  style={[
-                    styles.knob,
-                    { left: knobAt.x - KNOB / 2, top: knobAt.y - KNOB / 2, backgroundColor: hex },
-                  ]}
-                />
+              {/* CD-25: everything on the face lives in this pane so dots,
+                  markers and knob transform together. RN scales about the
+                  view centre, so the translation is adjusted to make the
+                  maths act about the top-left corner, matching wheelZoom. */}
+              <View
+                pointerEvents="none"
+                style={{
+                  width: WHEEL_SIZE,
+                  height: WHEEL_SIZE,
+                  transform: [
+                    { translateX: viewport.tx - RADIUS * (1 - viewport.scale) },
+                    { translateY: viewport.ty - RADIUS * (1 - viewport.scale) },
+                    { scale: viewport.scale },
+                  ],
+                }}
+              >
+                {wheelChromeVisible(displayMode) && <WheelDots />}
+                {visibleMarkers.map(m => (
+                  <View
+                    key={m.id}
+                    pointerEvents="none"
+                    style={[
+                      styles.marker,
+                      { left: m.x - MARKER / 2, top: m.y - MARKER / 2, backgroundColor: m.hex },
+                      activeMarker?.id === m.id && styles.markerActive,
+                    ]}
+                  />
+                ))}
+                {wheelChromeVisible(displayMode) && (
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.knob,
+                      { left: knobAt.x - KNOB / 2, top: knobAt.y - KNOB / 2, backgroundColor: hex },
+                    ]}
+                  />
+                )}
+              </View>
+            </View>
+            {/* CD-25: pinch on device; buttons everywhere (web fallback). */}
+            <View style={styles.zoomRow}>
+              <TouchableOpacity style={styles.zoomBtn} onPress={() => zoomBy(1 / ZOOM_STEP)}>
+                <Text style={styles.zoomBtnText}>−</Text>
+              </TouchableOpacity>
+              <Text style={styles.zoomLevel}>{viewport.scale.toFixed(1)}×</Text>
+              <TouchableOpacity style={styles.zoomBtn} onPress={() => zoomBy(ZOOM_STEP)}>
+                <Text style={styles.zoomBtnText}>+</Text>
+              </TouchableOpacity>
+              {isZoomed(viewport) && (
+                <TouchableOpacity style={styles.zoomReset} onPress={resetZoom}>
+                  <Text style={styles.zoomResetText}>Reset</Text>
+                </TouchableOpacity>
               )}
             </View>
             {showsEmptySavedHint(displayMode, markers.length) && (
@@ -404,6 +512,7 @@ const styles = StyleSheet.create({
     width: WHEEL_SIZE, height: WHEEL_SIZE, borderRadius: RADIUS,
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    overflow: 'hidden', // CD-25: the zoomed pane clips to the wheel circle
   },
   // Saved-only mode: the face recedes so the markers carry the tab.
   wheelDimmed: {
@@ -446,6 +555,28 @@ const styles = StyleSheet.create({
   },
   markerInfo: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
   markerHex: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600', marginTop: 2 },
+  // CD-25 zoom controls.
+  zoomRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginTop: 10, gap: 10,
+  },
+  zoomBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  zoomBtnText: { color: COLORS.text, fontSize: 18, fontWeight: '700', lineHeight: 20 },
+  zoomLevel: {
+    color: COLORS.textMuted, fontSize: 13, fontWeight: '700',
+    width: 44, textAlign: 'center',
+  },
+  zoomReset: {
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  zoomResetText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
   sliderRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 20, marginBottom: 14,
