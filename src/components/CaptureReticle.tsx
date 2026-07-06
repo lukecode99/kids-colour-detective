@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Animated, StyleSheet } from 'react-native';
+import { useCaptureHint } from '../utils/captureHint';
 import { COLORS } from '../theme';
 
 export const CROSSHAIR_SIZE = 140;
@@ -26,6 +27,10 @@ export default function CaptureReticle({
   const flashOpacity = useRef(new Animated.Value(0)).current;
   const [showSaved, setShowSaved] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // First-run cue (CD-28): shown until a few saves have been recorded,
+  // hidden during calibration (the overlay owns the circle then) and while
+  // the "✓ saved" badge occupies the same slot.
+  const showHint = useCaptureHint() && !disabled && !showSaved;
 
   useEffect(() => {
     const anim = Animated.loop(
@@ -86,6 +91,11 @@ export default function CaptureReticle({
       <View style={[styles.savedBadge, { opacity: showSaved ? 1 : 0 }]} pointerEvents="none">
         <Text style={styles.savedText}>✓ saved</Text>
       </View>
+      {showHint && (
+        <View style={styles.hintBadge} pointerEvents="none">
+          <Text style={styles.hintText}>👆 Tap the circle to save this colour</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -147,4 +157,18 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   savedText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  // Same slot as the saved badge (kept exclusive via showHint) so the
+  // circle stays exactly screen-centred and clear of the bottom panel.
+  hintBadge: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: CROSSHAIR_SIZE / 2 + 14,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  hintText: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
 });

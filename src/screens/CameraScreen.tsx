@@ -41,6 +41,7 @@ import { bestMatchInfo } from '../utils/matchLabel';
 import CaptureReticle from '../components/CaptureReticle';
 import PhotoPickerScreen from './PhotoPickerScreen';
 import { addSavedColor, newSavedColorId } from '../utils/savedColors';
+import { recordCaptureHintSave } from '../utils/captureHint';
 import { setCurrentColour } from '../utils/currentColour';
 import { COLORS, FONTS } from '../theme';
 
@@ -280,6 +281,8 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         },
         thumb
       );
+      // CD-28: every save counts towards dismissing the first-run hint.
+      recordCaptureHintSave();
       return cs;
     });
   }, []);
@@ -539,6 +542,8 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       },
       thumb
     );
+    // CD-28: every save counts towards dismissing the first-run hint.
+    recordCaptureHintSave();
   }, [colorInfo, matches, filters]);
 
   if (!hasPermission) {
