@@ -2,16 +2,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SCAN_FOOTER_HINT } from '../scanCopy';
 
-// CD-30: the footer is verbatim copy from Luke — these tests pin the exact
-// sentence and prove both scan-screen variants actually render it. The
+// CD-30/CD-33: the footer is verbatim copy from Luke — these tests pin the
+// exact sentence and prove both scan-screen variants actually render it. The
 // camera screens can't be mounted under the node test environment (native
 // vision-camera requires), so the render check reads the source directly.
 
-describe('scan page footer wording (CD-30)', () => {
+describe('scan page footer wording (CD-30, revised CD-33)', () => {
   it('is Luke\'s exact sentence, character for character', () => {
     expect(SCAN_FOOTER_HINT).toBe(
-      'See your image captures and filter paint types and brands in the My Colours tab'
+      'See your captured colours and filter by brand and paint type in the My Colours tab'
     );
+  });
+
+  it('the superseded CD-30 sentence is gone', () => {
+    expect(SCAN_FOOTER_HINT).not.toContain('image captures');
   });
 
   it("keeps the 'My Colours' tab capitalisation", () => {
