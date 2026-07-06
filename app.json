@@ -11,6 +11,7 @@
       "buildNumber": "4",
       "infoPlist": {
         "NSCameraUsageDescription": "Point the camera at a wall or surface to find the closest matching paint colour.",
+        "NSLocationWhenInUseUsageDescription": "This app does not use your location. Colour matching works entirely on your device.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -30,7 +31,8 @@
         "react-native-vision-camera",
         {
           "cameraPermissionText": "Point the camera at a wall or surface to find the closest matching paint colour.",
-          "enableMicrophonePermission": false
+          "enableMicrophonePermission": false,
+          "enableLocation": false
         }
       ]
     ],
