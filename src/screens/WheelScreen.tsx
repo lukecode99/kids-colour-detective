@@ -17,6 +17,7 @@ import {
   ScrollView,
   PanResponder,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 
 import { hslToRgb, rgbToHex, rgbToHsl, hexToRgb } from '../utils/colorMath';
@@ -58,6 +59,9 @@ import { COLORS } from '../theme';
 const WHEEL_SIZE = 260;
 const RADIUS = WHEEL_SIZE / 2;
 const KNOB = 26;
+// CD-24: saved-colour markers grew from 14px — easier to spot and tap,
+// still clearly smaller than the knob.
+const MARKER = 20;
 const SLIDER_H = 28;
 // Rebuilding matches + palette on every move event makes rapid drags
 // stutter; the preview swatch tracks every event, the heavy recompute is
@@ -265,7 +269,7 @@ export default function WheelScreen() {
                   pointerEvents="none"
                   style={[
                     styles.marker,
-                    { left: m.x - 7, top: m.y - 7, backgroundColor: m.hex },
+                    { left: m.x - MARKER / 2, top: m.y - MARKER / 2, backgroundColor: m.hex },
                     activeMarker?.id === m.id && styles.markerActive,
                   ]}
                 />
@@ -285,10 +289,25 @@ export default function WheelScreen() {
                 No saved colours yet — scan or pick a colour and save it to see it here.
               </Text>
             )}
+            {/* CD-24: the tapped capture's own photo, not just the swatch.
+                Pre-thumbnail saves fall back to a swatch block. */}
             {activeMarker && (
-              <Text style={styles.markerInfo}>
-                📍 {activeMarker.name} · {activeMarker.hex.toUpperCase()}
-              </Text>
+              <View style={styles.markerCard}>
+                {activeMarker.thumbnailUri ? (
+                  <Image
+                    source={{ uri: activeMarker.thumbnailUri }}
+                    style={styles.markerPhoto}
+                  />
+                ) : (
+                  <View
+                    style={[styles.markerPhoto, { backgroundColor: activeMarker.hex }]}
+                  />
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.markerInfo}>📍 {activeMarker.name}</Text>
+                  <Text style={styles.markerHex}>{activeMarker.hex.toUpperCase()}</Text>
+                </View>
+              </View>
             )}
           </View>
 
@@ -405,19 +424,28 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 4, shadowOffset: { width: 0, height: 1 },
     elevation: 4,
   },
-  // Saved-capture markers (CD-22): smaller than the knob, white-ringed so
-  // they read as "yours" against the borderless reference dots.
+  // Saved-capture markers (CD-22, enlarged CD-24): smaller than the knob,
+  // white-ringed so they read as "yours" against the borderless reference dots.
   marker: {
-    position: 'absolute', width: 14, height: 14, borderRadius: 7,
+    position: 'absolute', width: MARKER, height: MARKER, borderRadius: MARKER / 2,
     borderWidth: 2, borderColor: '#fff',
     shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
     elevation: 3,
   },
   markerActive: { borderColor: COLORS.accent, transform: [{ scale: 1.3 }] },
-  markerInfo: {
-    color: COLORS.text, fontSize: 13, fontWeight: '700',
-    marginTop: 8, textAlign: 'center',
+  // CD-24: tapped-marker detail — the capture's photo beside its name/hex.
+  markerCard: {
+    flexDirection: 'row', alignItems: 'center',
+    marginTop: 10, marginHorizontal: 20, alignSelf: 'stretch',
+    padding: 10, borderRadius: 14,
+    backgroundColor: COLORS.surface,
   },
+  markerPhoto: {
+    width: 72, height: 72, borderRadius: 10, marginRight: 12,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+  },
+  markerInfo: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  markerHex: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600', marginTop: 2 },
   sliderRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 20, marginBottom: 14,

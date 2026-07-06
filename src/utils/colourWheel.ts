@@ -47,6 +47,7 @@ export interface SavedMarker {
   id: string;
   hex: string; // the capture's own colour — the marker is painted with it
   name: string; // room label when set, else the colour name
+  thumbnailUri?: string; // the captured photo (CD-24) — absent on pre-thumbnail saves
   h: number;
   s: number;
   x: number;
@@ -61,18 +62,28 @@ export function savedColourMarkers(
     const [r, g, b] = e.rgb ?? hexToRgb(e.hex);
     const [h, s] = rgbToHsl(r, g, b);
     const { x, y } = wheelToPoint(h, s, radius);
-    return { id: e.id, hex: e.hex, name: e.label || e.name, h, s, x, y };
+    return {
+      id: e.id,
+      hex: e.hex,
+      name: e.label || e.name,
+      thumbnailUri: e.thumbnailUri,
+      h,
+      s,
+      x,
+      y,
+    };
   });
 }
 
 // Which marker (if any) a touch lands on: nearest within the threshold, so
 // overlapping markers resolve to the closest one instead of breaking. A miss
 // returns null and the touch falls through to the normal wheel pick.
+// Threshold tracks the CD-24 marker size (20px visual → a little slop).
 export function hitMarker(
   x: number,
   y: number,
   markers: SavedMarker[],
-  threshold = 16
+  threshold = 18
 ): SavedMarker | null {
   let best: SavedMarker | null = null;
   let bestD = threshold;

@@ -108,7 +108,8 @@ function saved(
   id: string,
   rgb: [number, number, number] | undefined,
   hex: string,
-  label?: string
+  label?: string,
+  thumbnailUri?: string
 ): SavedColorEntry {
   return {
     id,
@@ -119,6 +120,7 @@ function saved(
     match: '',
     timestamp: 1720000000000,
     label,
+    thumbnailUri,
   };
 }
 
@@ -208,5 +210,39 @@ describe('marker tap detection (hitMarker)', () => {
     );
     const nearest = hitMarker(twins[1].x, twins[1].y, twins);
     expect(nearest?.id).toBe('b');
+  });
+});
+
+// CD-24: markers grew to a 20px visual; the tapped capture surfaces its photo.
+describe('larger markers + capture photo (CD-24)', () => {
+  it('markers carry the capture photo through to the tap detail', () => {
+    const [withPhoto, without] = savedColourMarkers(
+      [
+        saved('a', [255, 0, 0], '#FF0000', 'Hall', 'file:///thumbnails/a.jpg'),
+        saved('b', [0, 255, 0], '#00FF00'),
+      ],
+      RADIUS
+    );
+    expect(withPhoto.thumbnailUri).toBe('file:///thumbnails/a.jpg');
+    // Pre-thumbnail saves stay tappable — no photo, swatch fallback renders.
+    expect(without.thumbnailUri).toBeUndefined();
+  });
+
+  it('a tap anywhere on the 20px visual (10px off centre) still hits', () => {
+    const markers = savedColourMarkers([saved('red', [255, 0, 0], '#FF0000')], RADIUS);
+    const m = markers[0];
+    expect(hitMarker(m.x + 10, m.y, markers)?.id).toBe('red');
+    expect(hitMarker(m.x - 7, m.y + 7, markers)?.id).toBe('red');
+  });
+
+  it('non-overlapping pairs at the new size stay individually tappable', () => {
+    // Two markers whose centres sit 22px apart — visually separate at 20px.
+    const a = { id: 'a', hex: '#111111', name: 'A', h: 0, s: 0.5, x: 100, y: 100 };
+    const b = { id: 'b', hex: '#222222', name: 'B', h: 0, s: 0.5, x: 122, y: 100 };
+    expect(hitMarker(a.x, a.y, [a, b])?.id).toBe('a');
+    expect(hitMarker(b.x, b.y, [a, b])?.id).toBe('b');
+    // A tap between them resolves to whichever is nearer, never the wrong one.
+    expect(hitMarker(108, 100, [a, b])?.id).toBe('a');
+    expect(hitMarker(114, 100, [a, b])?.id).toBe('b');
   });
 });
