@@ -4,6 +4,9 @@
 // room scheme and goes-with groups, rendered with the shared components.
 // CD-22: saved captures appear as markers on the wheel at their stored
 // colour's hue/saturation position; tapping one names it.
+// CD-23: a persisted display filter picks what the face shows — All,
+// Saved colours only (chrome hidden, markers prominent), or Wheel only
+// (no markers).
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   StyleSheet,
@@ -13,6 +16,7 @@ import {
   Platform,
   ScrollView,
   PanResponder,
+  TouchableOpacity,
 } from 'react-native';
 
 import { hslToRgb, rgbToHex, rgbToHsl, hexToRgb } from '../utils/colorMath';
@@ -28,6 +32,17 @@ import {
 import { buildCombinedView } from '../utils/combinedView';
 import { getColorInfo } from '../utils/colorNames';
 import { loadSavedColors, SavedColorEntry } from '../utils/savedColors';
+import {
+  WheelDisplayMode,
+  WHEEL_DISPLAY_DEFAULT,
+  WHEEL_DISPLAY_OPTIONS,
+  markersVisible,
+  wheelChromeVisible,
+  allowsPick,
+  showsEmptySavedHint,
+  loadWheelDisplayMode,
+  saveWheelDisplayMode,
+} from '../utils/wheelDisplay';
 import { Paint } from '../utils/paintMatcher';
 import PaletteIdeas from '../components/PaletteIdeas';
 import CoverageCalculator from '../components/CoverageCalculator';
@@ -98,9 +113,29 @@ export default function WheelScreen() {
     loadSavedColors().then(setSavedColors);
   }, []);
   const markers = useMemo(() => savedColourMarkers(savedColors, RADIUS), [savedColors]);
-  // The PanResponder is created once — it reads markers through a ref.
-  const markersRef = useRef(markers);
-  markersRef.current = markers;
+
+  // CD-23: display filter — persisted like the paint filters, loaded once.
+  const [displayMode, setDisplayMode] = useState<WheelDisplayMode>(WHEEL_DISPLAY_DEFAULT);
+  useEffect(() => {
+    loadWheelDisplayMode().then(setDisplayMode);
+  }, []);
+  const onSelectMode = useCallback((mode: WheelDisplayMode) => {
+    setDisplayMode(mode);
+    saveWheelDisplayMode(mode);
+    setActiveMarker(null);
+  }, []);
+
+  // Only the markers the current mode actually shows are tappable — a
+  // hidden marker must not swallow a wheel touch.
+  const visibleMarkers = useMemo(
+    () => (markersVisible(displayMode) ? markers : []),
+    [displayMode, markers]
+  );
+  // The PanResponder is created once — it reads markers/mode through refs.
+  const markersRef = useRef(visibleMarkers);
+  markersRef.current = visibleMarkers;
+  const modeRef = useRef(displayMode);
+  modeRef.current = displayMode;
 
   const commit = useCallback((force: boolean) => {
     const now = Date.now();
@@ -117,12 +152,15 @@ export default function WheelScreen() {
         const { locationX, locationY } = evt.nativeEvent;
         // A touch on a saved-colour marker identifies that capture; the
         // pick still moves there, so drags behave exactly as before.
+        // In saved-only mode touches ONLY identify markers (CD-23).
         setActiveMarker(hitMarker(locationX, locationY, markersRef.current));
+        if (!allowsPick(modeRef.current)) return;
         latest.current.pick = pointToWheel(locationX, locationY, RADIUS);
         setPick(latest.current.pick);
         commit(false);
       },
       onPanResponderMove: evt => {
+        if (!allowsPick(modeRef.current)) return;
         const { locationX, locationY } = evt.nativeEvent;
         latest.current.pick = pointToWheel(locationX, locationY, RADIUS);
         setPick(latest.current.pick);
@@ -195,10 +233,33 @@ export default function WheelScreen() {
             Drag around the wheel to pick a colour — no camera needed.
           </Text>
 
+          {/* CD-23: what the wheel face shows. */}
+          <View style={styles.modeRow}>
+            {WHEEL_DISPLAY_OPTIONS.map(o => (
+              <TouchableOpacity
+                key={o.mode}
+                style={[styles.modeChip, displayMode === o.mode && styles.modeChipActive]}
+                onPress={() => onSelectMode(o.mode)}
+              >
+                <Text
+                  style={[
+                    styles.modeChipText,
+                    displayMode === o.mode && styles.modeChipTextActive,
+                  ]}
+                >
+                  {o.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           <View style={styles.wheelWrap}>
-            <View style={styles.wheel} {...wheelResponder.panHandlers}>
-              <WheelDots />
-              {markers.map(m => (
+            <View
+              style={[styles.wheel, displayMode === 'saved' && styles.wheelDimmed]}
+              {...wheelResponder.panHandlers}
+            >
+              {wheelChromeVisible(displayMode) && <WheelDots />}
+              {visibleMarkers.map(m => (
                 <View
                   key={m.id}
                   pointerEvents="none"
@@ -209,14 +270,21 @@ export default function WheelScreen() {
                   ]}
                 />
               ))}
-              <View
-                pointerEvents="none"
-                style={[
-                  styles.knob,
-                  { left: knobAt.x - KNOB / 2, top: knobAt.y - KNOB / 2, backgroundColor: hex },
-                ]}
-              />
+              {wheelChromeVisible(displayMode) && (
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.knob,
+                    { left: knobAt.x - KNOB / 2, top: knobAt.y - KNOB / 2, backgroundColor: hex },
+                  ]}
+                />
+              )}
             </View>
+            {showsEmptySavedHint(displayMode, markers.length) && (
+              <Text style={styles.savedEmptyHint}>
+                No saved colours yet — scan or pick a colour and save it to see it here.
+              </Text>
+            )}
             {activeMarker && (
               <Text style={styles.markerInfo}>
                 📍 {activeMarker.name} · {activeMarker.hex.toUpperCase()}
@@ -299,11 +367,33 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: COLORS.text, fontSize: 22, fontWeight: '800' },
   hint: { color: COLORS.textMuted, fontSize: 13, paddingHorizontal: 20, marginBottom: 12 },
+  // CD-23 display-mode chips, same visual language as the paint-filter chips.
+  modeRow: {
+    flexDirection: 'row', justifyContent: 'center',
+    paddingHorizontal: 20, marginBottom: 12, gap: 8,
+  },
+  modeChip: {
+    paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  modeChipActive: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
+  modeChipText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
+  modeChipTextActive: { color: '#fff' },
   wheelWrap: { alignItems: 'center', marginBottom: 14 },
   wheel: {
     width: WHEEL_SIZE, height: WHEEL_SIZE, borderRadius: RADIUS,
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  // Saved-only mode: the face recedes so the markers carry the tab.
+  wheelDimmed: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  savedEmptyHint: {
+    color: COLORS.textMuted, fontSize: 13, marginTop: 8,
+    textAlign: 'center', paddingHorizontal: 32,
   },
   dot: {
     position: 'absolute', width: 18, height: 18, borderRadius: 9,
