@@ -44,24 +44,48 @@ export function stabilizedRgb(history: Rgb[]): Rgb {
   return medianRgb(history);
 }
 
-// Scale each channel so the locked white reference maps to pure white.
+// sRGB transfer function (IEC 61966-2-1). Lamp casts multiply light in
+// LINEAR RGB, so correction has to happen there too — scaling the encoded
+// values only half-removes a cast (CD-27).
+export function srgbToLinear(c: number): number {
+  const v = c / 255;
+  return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+}
+
+export function linearToSrgb(v: number): number {
+  const clamped = Math.max(0, Math.min(1, v));
+  const c = clamped <= 0.0031308 ? clamped * 12.92 : 1.055 * Math.pow(clamped, 1 / 2.4) - 0.055;
+  return Math.round(c * 255);
+}
+
+// Ratio-only cast correction against a locked NEUTRAL reference — grey card
+// or white paper, either works (CD-27). Each linear channel is scaled so the
+// reference becomes neutral at its own luminance; brightness is never boosted
+// towards pure white, so the reference's reflectance doesn't matter and the
+// cast factors cancel exactly for any neutral surface.
 export function applyWhiteRef(rgb: Rgb, ref: WhiteRef): Rgb {
   if (ref.r <= 20 || ref.g <= 20 || ref.b <= 20) return rgb;
+  const refLin = [srgbToLinear(ref.r), srgbToLinear(ref.g), srgbToLinear(ref.b)];
+  const refMean = (refLin[0] + refLin[1] + refLin[2]) / 3;
   return [
-    Math.min(255, Math.round((rgb[0] * 255) / ref.r)),
-    Math.min(255, Math.round((rgb[1] * 255) / ref.g)),
-    Math.min(255, Math.round((rgb[2] * 255) / ref.b)),
+    linearToSrgb(srgbToLinear(rgb[0]) * (refMean / refLin[0])),
+    linearToSrgb(srgbToLinear(rgb[1]) * (refMean / refLin[1])),
+    linearToSrgb(srgbToLinear(rgb[2]) * (refMean / refLin[2])),
   ];
 }
 
-// Does this reading look like a white card? Bright with a bounded colour
-// cast — a warm/cool lamp cast is fine (that's what we're correcting), but
-// a dark or strongly saturated reading means they're not pointing at paper.
+// Does this reading look like a neutral calibration surface (grey card or
+// white paper)? Plausibility is bounded saturation, NOT high brightness —
+// a grey card reflects ~18%, so mid-grey readings are exactly what we
+// expect. The cast bound is relative chroma: a warm/cool lamp on a neutral
+// surface stays under it, while genuinely coloured surfaces (an orange
+// wall at [200, 150, 70]) blow past it.
 export function isPlausibleWhiteRef(rgb: Rgb): boolean {
   const [r, g, b] = rgb;
+  const max = Math.max(r, g, b);
   const brightness = (r + g + b) / 3;
-  if (brightness < 110) return false;
-  return Math.max(r, g, b) - Math.min(r, g, b) <= 130;
+  if (brightness < 40 || max <= 0) return false;
+  return (max - Math.min(r, g, b)) / max <= 0.45;
 }
 
 export type LightHint = 'dim' | 'warm' | null;

@@ -6,6 +6,8 @@ import {
   applyWhiteRef,
   isPlausibleWhiteRef,
   lightingHint,
+  srgbToLinear,
+  linearToSrgb,
   STABILITY_WINDOW,
 } from '../scanQuality';
 import { Rgb } from '../photoSample';
@@ -81,30 +83,38 @@ describe('stable-frame averaging', () => {
   });
 });
 
-describe('white-card correction', () => {
-  // A warm lamp scales channels roughly [1, 0.85, 0.6].
-  const warm = (c: Rgb): Rgb => [
-    Math.round(c[0] * 1.0),
-    Math.round(c[1] * 0.85),
-    Math.round(c[2] * 0.6),
+describe('calibration correction (CD-27: ratio-only, linear RGB)', () => {
+  // A lamp cast multiplies LIGHT, i.e. linear RGB — model it there and
+  // encode back to sRGB, the way the sensor actually sees it.
+  const lit = (c: Rgb, cast: [number, number, number]): Rgb => [
+    linearToSrgb(srgbToLinear(c[0]) * cast[0]),
+    linearToSrgb(srgbToLinear(c[1]) * cast[1]),
+    linearToSrgb(srgbToLinear(c[2]) * cast[2]),
   ];
+  const asRef = ([r, g, b]: Rgb) => ({ r, g, b });
 
-  it('visibly corrects a warm-lamp scan (CD-6 SC)', () => {
+  it('sRGB linearisation round-trips', () => {
+    for (const c of [0, 1, 10, 64, 128, 200, 254, 255]) {
+      expect(linearToSrgb(srgbToLinear(c))).toBe(c);
+    }
+    expect(srgbToLinear(255)).toBeCloseTo(1, 6);
+    expect(srgbToLinear(0)).toBe(0);
+  });
+
+  it('fully removes a linear-space cast, not half (CD-6 SC, linear model)', () => {
+    // Mean-1 cast: ratio-only correction restores the exact true colour.
+    const cast: [number, number, number] = [1.25, 1.0, 0.75];
     const trueWall: Rgb = [200, 180, 160];
-    const wallUnderLamp = warm(trueWall); // [200, 153, 96]
-    const paperUnderLamp = warm([255, 255, 255]); // the locked reference
+    const wallUnderLamp = lit(trueWall, cast);
+    const greyCardUnderLamp = lit([118, 118, 118], cast); // ~18% reflectance
 
-    const corrected = applyWhiteRef(wallUnderLamp, {
-      r: paperUnderLamp[0],
-      g: paperUnderLamp[1],
-      b: paperUnderLamp[2],
-    });
+    const corrected = applyWhiteRef(wallUnderLamp, asRef(greyCardUnderLamp));
 
-    // Before: way off. After: within a couple of counts per channel.
-    expect(Math.abs(wallUnderLamp[2] - trueWall[2])).toBeGreaterThan(50);
-    expect(Math.abs(corrected[0] - trueWall[0])).toBeLessThanOrEqual(3);
-    expect(Math.abs(corrected[1] - trueWall[1])).toBeLessThanOrEqual(3);
-    expect(Math.abs(corrected[2] - trueWall[2])).toBeLessThanOrEqual(3);
+    // Before: way off. After: recovered within rounding.
+    expect(Math.abs(wallUnderLamp[0] - trueWall[0])).toBeGreaterThan(15);
+    expect(Math.abs(corrected[0] - trueWall[0])).toBeLessThanOrEqual(2);
+    expect(Math.abs(corrected[1] - trueWall[1])).toBeLessThanOrEqual(2);
+    expect(Math.abs(corrected[2] - trueWall[2])).toBeLessThanOrEqual(2);
 
     // And the correction changes the paint match back to the true wall's.
     const trueTop = matchPaintsLab(rgbToLab(...trueWall), 1)[0].paint;
@@ -112,17 +122,50 @@ describe('white-card correction', () => {
     expect(correctedTop.name).toBe(trueTop.name);
   });
 
+  it('mid-grey neutral at ~40% brightness corrects a warm cast to neutral within 1 (CD-27 SC)', () => {
+    const cast: [number, number, number] = [1.0, 0.8, 0.55];
+    const greySurface = lit([102, 102, 102], cast);
+    const greyCardRef = lit([118, 118, 118], cast);
+    // The reference is dim — brightness ~40%, nowhere near "bright white".
+    expect((greyCardRef[0] + greyCardRef[1] + greyCardRef[2]) / 3).toBeLessThan(115);
+    expect(isPlausibleWhiteRef(greyCardRef)).toBe(true);
+
+    const corrected = applyWhiteRef(greySurface, asRef(greyCardRef));
+    expect(Math.max(...corrected) - Math.min(...corrected)).toBeLessThanOrEqual(1);
+  });
+
+  it('grey card and white paper produce the same correction', () => {
+    const cast: [number, number, number] = [1.0, 0.85, 0.6];
+    const wallUnderLamp = lit([200, 180, 160], cast);
+    const viaWhite = applyWhiteRef(wallUnderLamp, asRef(lit([255, 255, 255], cast)));
+    const viaGrey = applyWhiteRef(wallUnderLamp, asRef(lit([118, 118, 118], cast)));
+    for (let ch = 0; ch < 3; ch++) {
+      expect(Math.abs(viaWhite[ch] - viaGrey[ch])).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('never boosts a reading towards pure white', () => {
+    // Ratio-only: a neutral reference leaves the reading untouched instead
+    // of scaling it up to 255-white.
+    expect(applyWhiteRef([250, 250, 250], { r: 200, g: 200, b: 200 })).toEqual([250, 250, 250]);
+    expect(applyWhiteRef([100, 100, 100], { r: 120, g: 120, b: 120 })).toEqual([100, 100, 100]);
+  });
+
   it('clamps at 255 and ignores a degenerate reference', () => {
-    expect(applyWhiteRef([250, 250, 250], { r: 200, g: 200, b: 200 })).toEqual([255, 255, 255]);
+    // A blue-deficient reference boosts blue hard enough to clip.
+    expect(applyWhiteRef([240, 240, 240], { r: 200, g: 200, b: 120 })[2]).toBe(255);
     const rgb: Rgb = [100, 100, 100];
     expect(applyWhiteRef(rgb, { r: 10, g: 200, b: 200 })).toEqual(rgb);
   });
 
-  it('accepts warm-lit paper, rejects dark or saturated surfaces', () => {
+  it('accepts neutral surfaces at any reasonable brightness, rejects coloured ones (CD-27 SC)', () => {
     expect(isPlausibleWhiteRef([255, 217, 153])).toBe(true); // paper under warm lamp
     expect(isPlausibleWhiteRef([250, 250, 250])).toBe(true); // paper in daylight
-    expect(isPlausibleWhiteRef([80, 70, 60])).toBe(false); // too dark
+    expect(isPlausibleWhiteRef([124, 115, 98])).toBe(true); // grey card under warm lamp
+    expect(isPlausibleWhiteRef([80, 70, 60])).toBe(true); // dim but neutral
+    expect(isPlausibleWhiteRef([200, 150, 70])).toBe(false); // strong orange
     expect(isPlausibleWhiteRef([230, 60, 40])).toBe(false); // a red wall
+    expect(isPlausibleWhiteRef([30, 28, 25])).toBe(false); // too dark to trust
   });
 });
 

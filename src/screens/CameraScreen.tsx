@@ -61,29 +61,33 @@ function hintLabel(hint: 'dim' | 'warm', hasTorch: boolean): string {
     return hasTorch ? '💡 Low light — try the torch' : '💡 Low light — add more light';
   }
   return hasTorch
-    ? '🔦 Warm light — use the torch or ⬜ white-card calibrate'
-    : '🎨 Warm light — try ⬜ white-card calibrate';
+    ? '🔦 Warm light — use the torch or Calibrate matching'
+    : '🎨 Warm light — try Calibrate matching';
 }
 
-// Guided white-card flow: hold paper in the centre, tap to lock. Replaces
-// the old silent auto-hunt for a bright region.
+// Guided calibration flow (CD-27): hold a grey card or white paper in the
+// centre, tap to lock. Locks the stabilised median, so the button waits for
+// a steady reading rather than grabbing a single raw frame.
 function CalibrationOverlay({
-  rawRgb,
+  rgb,
+  stable,
   onLock,
   onCancel,
 }: {
-  rawRgb: Rgb;
+  rgb: Rgb;
+  stable: boolean;
   onLock: () => void;
   onCancel: () => void;
 }) {
-  const ok = isPlausibleWhiteRef(rawRgb);
-  const hex = rgbToHex(rawRgb);
+  const ok = isPlausibleWhiteRef(rgb);
+  const canLock = ok && stable;
+  const hex = rgbToHex(rgb);
   return (
     <View style={styles.calibOverlay} pointerEvents="box-none">
       <View style={styles.calibCard}>
-        <Text style={styles.calibTitle}>⬜ White-card calibration</Text>
+        <Text style={styles.calibTitle}>🎯 Calibrate matching</Text>
         <Text style={styles.calibText}>
-          Hold white paper or card so it fills the circle, then lock.
+          Hold a grey card or plain white paper (not glossy) so it fills the circle, then lock.
         </Text>
         <View style={styles.calibSwatchRow}>
           <View style={[styles.calibSwatch, { backgroundColor: hex }]} />
@@ -91,19 +95,22 @@ function CalibrationOverlay({
         </View>
         {!ok && (
           <Text style={styles.calibWarn}>
-            That doesn't look like white paper — add light or move closer
+            That doesn't look like a neutral surface — try a grey card or white paper
           </Text>
+        )}
+        {ok && !stable && (
+          <Text style={styles.calibWarn}>Hold steady…</Text>
         )}
         <View style={styles.calibBtnRow}>
           <TouchableOpacity style={styles.calibCancel} onPress={onCancel}>
             <Text style={styles.calibCancelText}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.calibLock, !ok && styles.calibLockDisabled]}
+            style={[styles.calibLock, !canLock && styles.calibLockDisabled]}
             onPress={onLock}
-            disabled={!ok}
+            disabled={!canLock}
           >
-            <Text style={styles.calibLockText}>Lock white</Text>
+            <Text style={styles.calibLockText}>Lock</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -129,6 +136,8 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   const [camError, setCamError] = useState<string | null>(null);
   const [whiteRefMode, setWhiteRefMode] = useState<WhiteRefMode>('off');
   const [rawRgb, setRawRgb] = useState<Rgb>([128, 128, 128]);
+  const [calibRgb, setCalibRgb] = useState<Rgb>([128, 128, 128]);
+  const [calibStable, setCalibStable] = useState(false);
   const { filters, candidates } = usePaintFilters();
   // Snapshot for saveColor, whose deps stay [] via the functional setState.
   const filtersRef = useRef(filters);
@@ -136,6 +145,7 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
 
   const historyRef = useRef<Rgb[]>([]);
   const rawRgbRef = useRef<Rgb>([128, 128, 128]);
+  const stabRgbRef = useRef<Rgb>([128, 128, 128]);
   const whiteRefValueRef = useRef<WhiteRef | null>(null);
   const whiteRefModeRef = useRef<WhiteRefMode>('off');
   whiteRefModeRef.current = whiteRefMode;
@@ -198,7 +208,11 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         // Median over recent steady frames irons out the remaining
         // frame-to-frame wobble so the top match stays put.
         historyRef.current = pushReading(historyRef.current, raw);
-        let [r, g, b] = stabilizedRgb(historyRef.current);
+        const stab = stabilizedRgb(historyRef.current);
+        stabRgbRef.current = stab;
+        setCalibRgb(stab);
+        setCalibStable(isStable(historyRef.current));
+        let [r, g, b] = stab;
         if (whiteRefModeRef.current === 'locked' && whiteRefValueRef.current) {
           [r, g, b] = applyWhiteRef([r, g, b], whiteRefValueRef.current);
         }
@@ -223,8 +237,10 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
     });
   }, []);
 
+  // Lock the stabilised median, not a single raw frame (CD-27) — the
+  // overlay's Lock button is disabled until the reading is steady.
   const lockWhiteRef = useCallback(() => {
-    const [r, g, b] = rawRgbRef.current;
+    const [r, g, b] = stabRgbRef.current;
     whiteRefValueRef.current = { r, g, b };
     setWhiteRefMode('locked');
   }, []);
@@ -303,7 +319,11 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
             onPress={handleWhiteRefPress}
           >
             <Text style={[FONTS.toggle, styles.toggleText, whiteRefMode !== 'off' && styles.toggleTextActive]}>
-              {whiteRefMode === 'locked' ? '⬜ ✓' : whiteRefMode === 'calibrating' ? '⬜ …' : '⬜'}
+              {whiteRefMode === 'locked'
+                ? 'Calibrate matching ✓'
+                : whiteRefMode === 'calibrating'
+                  ? 'Calibrate matching …'
+                  : 'Calibrate matching'}
             </Text>
           </TouchableOpacity>
           <View style={styles.toggleDivider} />
@@ -318,7 +338,8 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
 
       {whiteRefMode === 'calibrating' && (
         <CalibrationOverlay
-          rawRgb={rawRgb}
+          rgb={calibRgb}
+          stable={calibStable}
           onLock={lockWhiteRef}
           onCancel={() => setWhiteRefMode('off')}
         />
@@ -385,13 +406,16 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   const [matches, setMatches] = useState<PaintMatch[]>([]);
   const [whiteRefMode, setWhiteRefMode] = useState<WhiteRefMode>('off');
   const [rawRgb, setRawRgb] = useState<Rgb>([128, 128, 128]);
+  const [calibRgb, setCalibRgb] = useState<Rgb>([128, 128, 128]);
   const [torchOn, setTorchOn] = useState(false);
   const [isUnstable, setIsUnstable] = useState(false);
+  const [calibStable, setCalibStable] = useState(false);
   const { filters, candidates } = usePaintFilters();
 
   const cameraRef = useRef<any>(null);
   const historyRef = useRef<Rgb[]>([]);
   const rawRgbRef = useRef<Rgb>([128, 128, 128]);
+  const stabRgbRef = useRef<Rgb>([128, 128, 128]);
   const whiteRefValueRef = useRef<WhiteRef | null>(null);
   const whiteRefModeRef = useRef<WhiteRefMode>('off');
   whiteRefModeRef.current = whiteRefMode;
@@ -414,8 +438,12 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       historyRef.current = pushReading(historyRef.current, raw);
       const stable = isStable(historyRef.current);
       setIsUnstable(historyRef.current.length >= 2 && !stable);
+      setCalibStable(stable);
 
-      let [r, g, b] = stabilizedRgb(historyRef.current);
+      const stab = stabilizedRgb(historyRef.current);
+      stabRgbRef.current = stab;
+      setCalibRgb(stab);
+      let [r, g, b] = stab;
       if (whiteRefModeRef.current === 'locked' && whiteRefValueRef.current) {
         [r, g, b] = applyWhiteRef([r, g, b], whiteRefValueRef.current);
       }
@@ -472,8 +500,10 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
     });
   }, []);
 
+  // Lock the stabilised median, not a single raw frame (CD-27) — the
+  // overlay's Lock button is disabled until the reading is steady.
   const lockWhiteRef = useCallback(() => {
-    const [r, g, b] = rawRgbRef.current;
+    const [r, g, b] = stabRgbRef.current;
     whiteRefValueRef.current = { r, g, b };
     setWhiteRefMode('locked');
   }, []);
@@ -595,10 +625,11 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         </View>
       )}
 
-      {/* Guided white-card calibration */}
+      {/* Guided calibration (CD-27: grey card or white paper) */}
       {whiteRefMode === 'calibrating' && (
         <CalibrationOverlay
-          rawRgb={rawRgb}
+          rgb={calibRgb}
+          stable={calibStable}
           onLock={lockWhiteRef}
           onCancel={() => setWhiteRefMode('off')}
         />
@@ -614,7 +645,11 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
             onPress={handleWhiteRefPress}
           >
             <Text style={[styles.nPillText, whiteRefMode !== 'off' && styles.nPillTextActive]}>
-              {whiteRefMode === 'locked' ? '⬜ ✓' : whiteRefMode === 'calibrating' ? '⬜ …' : '⬜ Ref'}
+              {whiteRefMode === 'locked'
+                ? 'Calibrate matching ✓'
+                : whiteRefMode === 'calibrating'
+                  ? 'Calibrate matching …'
+                  : 'Calibrate matching'}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.nPill} onPress={onOpenPhoto}>
