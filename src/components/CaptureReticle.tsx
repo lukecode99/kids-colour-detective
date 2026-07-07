@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Animated, StyleSheet } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useCaptureHint } from '../utils/captureHint';
 import { COLORS } from '../theme';
 
@@ -8,8 +9,8 @@ export const CROSSHAIR_SIZE = 140;
 // CD-12: the breathing crosshair reticle is the capture control — tapping
 // inside the circle saves the current colour. TouchableOpacity only
 // completes a press when the finger stays put, so panning the camera never
-// captures by accident. Feedback is visual only (scale dip + ring flash +
-// a brief "✓ saved" badge); expo-haptics isn't in the dependency set.
+// captures by accident. Feedback is visual + haptic (scale dip + ring flash +
+// a brief "✓ saved" badge + success notification haptic).
 //
 // The circle must stay exactly screen-centred — the scan loop samples the
 // centre pixels — so the badge is absolutely positioned below it rather
@@ -61,6 +62,7 @@ export default function CaptureReticle({
   const handlePress = useCallback(() => {
     if (disabled) return;
     onCapture();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     flashOpacity.setValue(1);
     Animated.timing(flashOpacity, { toValue: 0, duration: 450, useNativeDriver: true }).start();
     setShowSaved(true);
