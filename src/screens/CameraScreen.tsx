@@ -7,6 +7,7 @@ import {
   Dimensions,
   SafeAreaView,
   Platform,
+  Linking,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
@@ -44,6 +45,15 @@ import {
   FilterEmptyNotice,
 } from '../components/paintMatchUI';
 import { bestMatchInfo } from '../utils/matchLabel';
+import {
+  CalibrationSurface,
+  GREY_CARD_PRODUCT_NAME,
+  GREY_CARD_LINK_ENABLED,
+  greyCardUrl,
+  calibratedLabel,
+  recordSurfaceChoice,
+  usePreferredSurface,
+} from '../utils/calibrationSurface';
 import CaptureReticle from '../components/CaptureReticle';
 import PhotoPickerScreen from './PhotoPickerScreen';
 import { addSavedColor, newSavedColorId } from '../utils/savedColors';
@@ -58,7 +68,7 @@ const SCAN_INTERVAL_MS = 1500; // web fallback loop only
 const SCAN_FPS = 5; // native frame-processor readings — one every 200ms
 const SAMPLE_N = 9; // 9×9 median window for the centre reading
 
-type WhiteRefMode = 'off' | 'calibrating' | 'locked';
+type WhiteRefMode = 'off' | 'choosing' | 'calibrating' | 'locked';
 
 function rgbToHex([r, g, b]: Rgb): string {
   return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('').toUpperCase();
@@ -73,29 +83,94 @@ function hintLabel(hint: 'dim' | 'warm', hasTorch: boolean): string {
     : '🎨 Warm light — try Calibrate matching';
 }
 
-// Guided calibration flow (CD-27): hold a grey card or white paper in the
+// The toggle pill's label across the calibration journey (CD-34): the
+// locked state names the surface it was locked against.
+function whiteRefPillLabel(mode: WhiteRefMode, surface: CalibrationSurface | null): string {
+  if (mode === 'locked' && surface) return calibratedLabel(surface);
+  if (mode === 'locked') return 'Calibrate matching ✓';
+  if (mode === 'calibrating' || mode === 'choosing') return 'Calibrate matching …';
+  return 'Calibrate matching';
+}
+
+// CD-34: entering "Calibrate matching" first asks what's in front of the
+// camera — ordinary white paper (everyone has a sheet) or an 18%
+// photographic grey card (the accurate reference). CD-27's ratio-only
+// correction handles either identically; the choice tailors guidance and
+// the locked pill. The "Get one" purchase link stays hidden behind
+// GREY_CARD_LINK_ENABLED until Amazon Associates approval.
+function CalibrationChooser({
+  onChoose,
+  onCancel,
+}: {
+  onChoose: (surface: CalibrationSurface) => void;
+  onCancel: () => void;
+}) {
+  const preferred = usePreferredSurface();
+  return (
+    <View style={styles.calibOverlay} pointerEvents="box-none">
+      <View style={styles.calibCard}>
+        <Text style={styles.calibTitle}>🎯 Calibrate matching</Text>
+        <Text style={styles.calibText}>What will you hold up to the camera?</Text>
+        <TouchableOpacity
+          style={[styles.chooserBtn, preferred === 'paper' && styles.chooserBtnPreferred]}
+          onPress={() => onChoose('paper')}
+        >
+          <Text style={styles.chooserBtnTitle}>📄 Ordinary white paper</Text>
+          <Text style={styles.chooserBtnSub}>Any plain sheet — quick and easy</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.chooserBtn, preferred === 'card' && styles.chooserBtnPreferred]}
+          onPress={() => onChoose('card')}
+        >
+          <Text style={styles.chooserBtnTitle}>🎞 {GREY_CARD_PRODUCT_NAME}</Text>
+          <Text style={styles.chooserBtnSub}>The most accurate reference</Text>
+        </TouchableOpacity>
+        {GREY_CARD_LINK_ENABLED && (
+          <TouchableOpacity
+            style={styles.chooserGetOne}
+            onPress={() => Linking.openURL(greyCardUrl()).catch(() => {})}
+            hitSlop={{ top: 6, bottom: 6 }}
+          >
+            <Text style={styles.chooserGetOneText}>🛒 Get one · Amazon</Text>
+          </TouchableOpacity>
+        )}
+        <View style={styles.calibBtnRow}>
+          <TouchableOpacity style={styles.calibCancel} onPress={onCancel}>
+            <Text style={styles.calibCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// Guided calibration flow (CD-27): hold the chosen neutral surface in the
 // centre, tap to lock. Locks the stabilised median, so the button waits for
-// a steady reading rather than grabbing a single raw frame.
+// a steady reading rather than grabbing a single raw frame. Copy follows
+// the surface picked in the chooser (CD-34).
 function CalibrationOverlay({
   rgb,
   stable,
+  surface,
   onLock,
   onCancel,
 }: {
   rgb: Rgb;
   stable: boolean;
+  surface: CalibrationSurface;
   onLock: () => void;
   onCancel: () => void;
 }) {
   const ok = isPlausibleWhiteRef(rgb);
   const canLock = ok && stable;
   const hex = rgbToHex(rgb);
+  const surfaceName = surface === 'card' ? 'your grey card' : 'your white paper (not glossy)';
   return (
     <View style={styles.calibOverlay} pointerEvents="box-none">
       <View style={styles.calibCard}>
         <Text style={styles.calibTitle}>🎯 Calibrate matching</Text>
         <Text style={styles.calibText}>
-          Hold a grey card or plain white paper (not glossy) so it fills the circle, then lock.
+          Hold {surfaceName} so it fills the circle, then lock.
         </Text>
         <View style={styles.calibSwatchRow}>
           <View style={[styles.calibSwatch, { backgroundColor: hex }]} />
@@ -103,7 +178,7 @@ function CalibrationOverlay({
         </View>
         {!ok && (
           <Text style={styles.calibWarn}>
-            That doesn't look like a neutral surface — try a grey card or white paper
+            That doesn't look like a neutral surface — fill the circle with {surfaceName}
           </Text>
         )}
         {ok && !stable && (
@@ -143,6 +218,7 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   const [torchSupported, setTorchSupported] = useState(false);
   const [camError, setCamError] = useState<string | null>(null);
   const [whiteRefMode, setWhiteRefMode] = useState<WhiteRefMode>('off');
+  const [calibSurface, setCalibSurface] = useState<CalibrationSurface | null>(null);
   const [rawRgb, setRawRgb] = useState<Rgb>([128, 128, 128]);
   const [calibRgb, setCalibRgb] = useState<Rgb>([128, 128, 128]);
   const [calibStable, setCalibStable] = useState(false);
@@ -240,12 +316,23 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
     return () => clearInterval(interval);
   }, [candidates]);
 
+  // Entering the flow opens the surface chooser (CD-34); pressing the pill
+  // at any later stage backs all the way out.
   const handleWhiteRefPress = useCallback(() => {
-    setWhiteRefMode(mode => {
-      if (mode === 'off') return 'calibrating';
+    if (whiteRefModeRef.current === 'off') {
+      setWhiteRefMode('choosing');
+    } else {
       whiteRefValueRef.current = null;
-      return 'off';
-    });
+      setCalibSurface(null);
+      setWhiteRefMode('off');
+    }
+  }, []);
+
+  const chooseSurface = useCallback((surface: CalibrationSurface) => {
+    setCalibSurface(surface);
+    // Remember the choice so the chooser highlights it next time.
+    recordSurfaceChoice(surface);
+    setWhiteRefMode('calibrating');
   }, []);
 
   // Lock the stabilised median, not a single raw frame (CD-27) — the
@@ -333,11 +420,7 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
             onPress={handleWhiteRefPress}
           >
             <Text style={[FONTS.toggle, styles.toggleText, whiteRefMode !== 'off' && styles.toggleTextActive]}>
-              {whiteRefMode === 'locked'
-                ? 'Calibrate matching ✓'
-                : whiteRefMode === 'calibrating'
-                  ? 'Calibrate matching …'
-                  : 'Calibrate matching'}
+              {whiteRefPillLabel(whiteRefMode, calibSurface)}
             </Text>
           </TouchableOpacity>
           <View style={styles.toggleDivider} />
@@ -348,14 +431,21 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       </SafeAreaView>
 
       {/* Tappable capture reticle (CD-12) */}
-      <CaptureReticle onCapture={saveColor} disabled={whiteRefMode === 'calibrating'} />
+      <CaptureReticle
+        onCapture={saveColor}
+        disabled={whiteRefMode === 'calibrating' || whiteRefMode === 'choosing'}
+      />
 
-      {whiteRefMode === 'calibrating' && (
+      {whiteRefMode === 'choosing' && (
+        <CalibrationChooser onChoose={chooseSurface} onCancel={handleWhiteRefPress} />
+      )}
+      {whiteRefMode === 'calibrating' && calibSurface && (
         <CalibrationOverlay
           rgb={calibRgb}
           stable={calibStable}
+          surface={calibSurface}
           onLock={lockWhiteRef}
-          onCancel={() => setWhiteRefMode('off')}
+          onCancel={handleWhiteRefPress}
         />
       )}
 
@@ -366,7 +456,7 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
           <View style={[styles.swatchStrip, { backgroundColor: colorInfo.hex }]} />
           {(() => {
             const hint = lightingHint(rawRgb);
-            return hint && !torchOn && whiteRefMode !== 'calibrating' ? (
+            return hint && !torchOn && whiteRefMode !== 'calibrating' && whiteRefMode !== 'choosing' ? (
               <Text style={styles.lightHintText}>{hintLabel(hint, torchSupported)}</Text>
             ) : null;
           })()}
@@ -430,6 +520,7 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   });
   const [matches, setMatches] = useState<PaintMatch[]>([]);
   const [whiteRefMode, setWhiteRefMode] = useState<WhiteRefMode>('off');
+  const [calibSurface, setCalibSurface] = useState<CalibrationSurface | null>(null);
   const [rawRgb, setRawRgb] = useState<Rgb>([128, 128, 128]);
   const [calibRgb, setCalibRgb] = useState<Rgb>([128, 128, 128]);
   const [torchOn, setTorchOn] = useState(false);
@@ -520,12 +611,23 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
     [onSample, isIOS]
   );
 
+  // Entering the flow opens the surface chooser (CD-34); pressing the pill
+  // at any later stage backs all the way out.
   const handleWhiteRefPress = useCallback(() => {
-    setWhiteRefMode(mode => {
-      if (mode === 'off') return 'calibrating';
+    if (whiteRefModeRef.current === 'off') {
+      setWhiteRefMode('choosing');
+    } else {
       whiteRefValueRef.current = null;
-      return 'off';
-    });
+      setCalibSurface(null);
+      setWhiteRefMode('off');
+    }
+  }, []);
+
+  const chooseSurface = useCallback((surface: CalibrationSurface) => {
+    setCalibSurface(surface);
+    // Remember the choice so the chooser highlights it next time.
+    recordSurfaceChoice(surface);
+    setWhiteRefMode('calibrating');
   }, []);
 
   // Lock the stabilised median, not a single raw frame (CD-27) — the
@@ -647,7 +749,10 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       </SafeAreaView>
 
       {/* Centre crosshair — tappable capture control (CD-12) */}
-      <CaptureReticle onCapture={saveColor} disabled={whiteRefMode === 'calibrating'} />
+      <CaptureReticle
+        onCapture={saveColor}
+        disabled={whiteRefMode === 'calibrating' || whiteRefMode === 'choosing'}
+      />
 
       {/* Stability indicator — below crosshair, above bottom panel */}
       {isUnstable && (
@@ -657,12 +762,16 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       )}
 
       {/* Guided calibration (CD-27: grey card or white paper) */}
-      {whiteRefMode === 'calibrating' && (
+      {whiteRefMode === 'choosing' && (
+        <CalibrationChooser onChoose={chooseSurface} onCancel={handleWhiteRefPress} />
+      )}
+      {whiteRefMode === 'calibrating' && calibSurface && (
         <CalibrationOverlay
           rgb={calibRgb}
           stable={calibStable}
+          surface={calibSurface}
           onLock={lockWhiteRef}
-          onCancel={() => setWhiteRefMode('off')}
+          onCancel={handleWhiteRefPress}
         />
       )}
 
@@ -676,11 +785,7 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
             onPress={handleWhiteRefPress}
           >
             <Text style={[styles.nPillText, whiteRefMode !== 'off' && styles.nPillTextActive]}>
-              {whiteRefMode === 'locked'
-                ? 'Calibrate matching ✓'
-                : whiteRefMode === 'calibrating'
-                  ? 'Calibrate matching …'
-                  : 'Calibrate matching'}
+              {whiteRefPillLabel(whiteRefMode, calibSurface)}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.nPill} onPress={onOpenPhoto}>
@@ -789,6 +894,22 @@ const styles = StyleSheet.create({
   },
   calibLockDisabled: { backgroundColor: 'rgba(255,255,255,0.15)' },
   calibLockText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+
+  // --- Surface chooser (CD-34, inside the calibration card) ---
+  chooserBtn: {
+    backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 10, marginTop: 10,
+    borderWidth: 1, borderColor: 'transparent',
+  },
+  chooserBtnPreferred: { borderColor: 'rgba(255,255,255,0.4)' },
+  chooserBtnTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  chooserBtnSub: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginTop: 2 },
+  chooserGetOne: {
+    alignSelf: 'flex-start', marginTop: 10,
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 14, backgroundColor: COLORS.accent,
+  },
+  chooserGetOneText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
   // --- Lighting hint (shared, inside bottom panel) ---
   lightHintText: {
