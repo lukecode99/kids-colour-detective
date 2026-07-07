@@ -5,12 +5,14 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "uk.co.colourdetective.app",
       "buildNumber": "4",
       "infoPlist": {
         "NSCameraUsageDescription": "Point the camera at a wall or surface to find the closest matching paint colour.",
+        "NSPhotoLibraryUsageDescription": "Choose a photo to find the closest matching paint colours in it. Photos are analysed on your device only.",
         "NSLocationWhenInUseUsageDescription": "This app does not use your location. Colour matching works entirely on your device.",
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -27,6 +29,14 @@
     },
     "plugins": [
       "expo-camera",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose a photo to find the closest matching paint colours in it. Photos are analysed on your device only.",
+          "cameraPermission": "Point the camera at a wall or surface to find the closest matching paint colour.",
+          "microphonePermission": false
+        }
+      ],
       [
         "react-native-vision-camera",
         {

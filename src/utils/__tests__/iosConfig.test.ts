@@ -40,3 +40,39 @@ describe('iOS purpose strings (CD-32, ITMS-90683)', () => {
     expect(props.enableMicrophonePermission).toBe(false);
   });
 });
+
+// CD-35: photo-library purpose string (expo-image-picker was a dependency
+// with no config-plugin entry, so builds shipped the default message), plus
+// the app icon pinned in-repo — prebuild was silently shipping its blank
+// white placeholder because expo.icon was never set.
+describe('photo library purpose string and icon (CD-35)', () => {
+  const PHOTOS_PERMISSION =
+    'Choose a photo to find the closest matching paint colours in it. Photos are analysed on your device only.';
+
+  function imagePickerPluginProps(): any {
+    const entry = appJson.expo.plugins.find(
+      (p: any) => Array.isArray(p) && p[0] === 'expo-image-picker'
+    );
+    return entry?.[1];
+  }
+
+  it('declares an honest photo-library purpose string', () => {
+    expect(ios.infoPlist.NSPhotoLibraryUsageDescription).toBe(PHOTOS_PERMISSION);
+    expect(ios.infoPlist.NSPhotoLibraryUsageDescription).not.toMatch(/SDK|dependency|API/i);
+  });
+
+  it('configures the expo-image-picker plugin with the same strings', () => {
+    const props = imagePickerPluginProps();
+    expect(props.photosPermission).toBe(PHOTOS_PERMISSION);
+    expect(props.cameraPermission).toBe(ios.infoPlist.NSCameraUsageDescription);
+    expect(props.microphonePermission).toBe(false);
+  });
+
+  it('pins the app icon in the repo so prebuild cannot ship its placeholder', () => {
+    expect(appJson.expo.icon).toBe('./assets/icon.png');
+    const iconPath = path.join(__dirname, '..', '..', '..', 'assets', 'icon.png');
+    expect(fs.existsSync(iconPath)).toBe(true);
+    // Real payload, not a zero-byte stub.
+    expect(fs.statSync(iconPath).size).toBeGreaterThan(1000);
+  });
+});
