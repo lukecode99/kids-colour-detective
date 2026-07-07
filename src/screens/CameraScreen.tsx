@@ -24,6 +24,7 @@ if (Platform.OS !== 'web') {
   ImageManipulator = require('expo-image-manipulator');
 }
 
+import * as Haptics from 'expo-haptics';
 import { getColorInfo, ColorInfo } from '../utils/colorNames';
 import { matchPaintsLab, PaintMatch } from '../utils/paintMatcher';
 import { rgbToLab } from '../utils/colorMath';
@@ -344,6 +345,7 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   }, []);
 
   const saveColor = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setColorState(cs => {
       // Centre-crop thumbnail from the live video so the saved entry shows
       // what was actually scanned.
@@ -639,6 +641,7 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   }, []);
 
   const saveColor = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     // The scan loop no longer produces photo files, so grab a preview
     // snapshot (no shutter) for the thumbnail; the snapshot file is
     // temporary, so savedColors copies it to app storage.
