@@ -15,6 +15,7 @@ import {
   FlatList,
 } from 'react-native';
 
+import * as Haptics from 'expo-haptics';
 import { Paint, PaintMatch } from '../utils/paintMatcher';
 import { searchBrandColours, crossBrandAlternates } from '../utils/brandMatch';
 import { BRAND_OPTIONS } from '../utils/filters';
@@ -99,6 +100,11 @@ export default function BrandMatchScreen() {
     setSource(null);
   }, []);
 
+  const pickColour = useCallback((paint: Paint) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setSource(paint);
+  }, []);
+
   return (
     <View style={styles.container}>
       <SafeAreaView style={{ flex: 1, paddingTop: Platform.OS === 'web' ? 48 : 0 }}>
@@ -139,7 +145,7 @@ export default function BrandMatchScreen() {
           <FlatList
             data={colours}
             keyExtractor={p => `${p.brand}-${p.name}-${p.code}`}
-            renderItem={({ item }) => <ColourRow paint={item} onPick={setSource} />}
+            renderItem={({ item }) => <ColourRow paint={item} onPick={pickColour} />}
             ListHeaderComponent={
               <View>
                 <Text style={styles.hint}>
