@@ -345,7 +345,7 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   }, []);
 
   const saveColor = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setColorState(cs => {
       // Centre-crop thumbnail from the live video so the saved entry shows
       // what was actually scanned.
@@ -641,7 +641,7 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   }, []);
 
   const saveColor = useCallback(async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     // The scan loop no longer produces photo files, so grab a preview
     // snapshot (no shutter) for the thumbnail; the snapshot file is
     // temporary, so savedColors copies it to app storage.
@@ -1018,3 +1018,4 @@ const styles = StyleSheet.create({
   nMatchName: { color: COLORS.text, fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
   nMatchHex: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
 });
+
