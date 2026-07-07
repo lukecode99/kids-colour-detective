@@ -50,28 +50,30 @@ describe('capture hint store (CD-28)', () => {
     expect(isCaptureHintVisible()).toBe(true);
   });
 
-  it('auto-dismisses after N saves and persists the dismissal', async () => {
+  it('stays visible after saves; save count still persists (CD-37)', async () => {
     await loadCaptureHintState();
     for (let i = 0; i < CAPTURE_HINT_MAX_SAVES; i++) {
       expect(isCaptureHintVisible()).toBe(true);
       recordCaptureHintSave();
     }
-    expect(isCaptureHintVisible()).toBe(false);
+    // Hint is always visible once loaded — no auto-dismiss.
+    expect(isCaptureHintVisible()).toBe(true);
 
-    // "App restart": fresh in-memory store, same storage.
+    // Save count still persists across restarts (for future use).
     resetCaptureHint();
     expect(isCaptureHintVisible()).toBe(false);
     await loadCaptureHintState();
-    expect(isCaptureHintVisible()).toBe(false);
+    expect(isCaptureHintVisible()).toBe(true);
   });
 
-  it('a partial save count survives restart', async () => {
+  it('hint stays visible across restarts regardless of save count (CD-37)', async () => {
     await loadCaptureHintState();
     recordCaptureHintSave();
     resetCaptureHint();
     await loadCaptureHintState();
     expect(isCaptureHintVisible()).toBe(true);
     for (let i = 1; i < CAPTURE_HINT_MAX_SAVES; i++) recordCaptureHintSave();
-    expect(isCaptureHintVisible()).toBe(false);
+    // Always visible once loaded — save count does not gate visibility.
+    expect(isCaptureHintVisible()).toBe(true);
   });
 });

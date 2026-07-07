@@ -58,7 +58,7 @@ function subscribe(listener: () => void): () => void {
 // Hidden until storage has been read — a returning user must never see the
 // hint flash before their persisted count loads.
 export function isCaptureHintVisible(): boolean {
-  return loaded && shouldShowCaptureHint(state);
+  return loaded;
 }
 
 export async function loadCaptureHintState(): Promise<void> {

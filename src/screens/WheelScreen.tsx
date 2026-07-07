@@ -177,6 +177,7 @@ export default function WheelScreen() {
   const viewportRef = useRef(viewport);
   viewportRef.current = viewport;
   const pinchRef = useRef<{ dist: number; cx: number; cy: number } | null>(null);
+  const singlePanRef = useRef<{ x: number; y: number } | null>(null);
   const applyViewport = useCallback((vp: WheelViewport) => {
     viewportRef.current = vp;
     setViewport(vp);
@@ -201,7 +202,9 @@ export default function WheelScreen() {
           return;
         }
         pinchRef.current = null;
+        singlePanRef.current = null;
         const { locationX, locationY } = evt.nativeEvent;
+        singlePanRef.current = { x: locationX, y: locationY };
         const c = screenToContent(locationX, locationY, viewportRef.current);
         // A touch on a saved-colour marker selects that capture's exact
         // colour (CD-26) — pick, slider and the committed view all follow,
@@ -244,18 +247,28 @@ export default function WheelScreen() {
         // A finger just lifted off a pinch: swallow the leftover single
         // touch so the pick doesn't jump across the wheel.
         if (pinchRef.current) return;
-        if (!allowsPick(modeRef.current)) return;
         const { locationX, locationY } = evt.nativeEvent;
+        if (isZoomed(viewportRef.current)) {
+          const prev = singlePanRef.current;
+          singlePanRef.current = { x: locationX, y: locationY };
+          if (!prev) return;
+          applyViewport(panViewport(viewportRef.current, locationX - prev.x, locationY - prev.y, WHEEL_SIZE));
+          return;
+        }
+        singlePanRef.current = { x: locationX, y: locationY };
+        if (!allowsPick(modeRef.current)) return;
         const c = screenToContent(locationX, locationY, viewportRef.current);
         latest.current.pick = pointToWheel(c.x, c.y, RADIUS);
         setPick(latest.current.pick);
         commit(false);
       },
       onPanResponderRelease: () => {
+        singlePanRef.current = null;
         pinchRef.current = null;
         commit(true);
       },
       onPanResponderTerminate: () => {
+        singlePanRef.current = null;
         pinchRef.current = null;
         commit(true);
       },

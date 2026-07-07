@@ -758,7 +758,7 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       />
 
       {/* Stability indicator — below crosshair, above bottom panel */}
-      {isUnstable && (
+      {isUnstable && !lightingHint(rawRgb) && (
         <View style={styles.nStabilityBar} pointerEvents="none">
           <Text style={styles.nStabilityText}>● Unstable — move closer to the surface</Text>
         </View>
