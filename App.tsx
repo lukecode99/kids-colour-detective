@@ -3,7 +3,8 @@ import { Platform, View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from
 import CameraScreen from './src/screens/CameraScreen';
 import WheelScreen from './src/screens/WheelScreen';
 import BrandMatchScreen from './src/screens/BrandMatchScreen';
-import MyColoursScreen from './src/screens/MyColoursScreen';
+import MyColoursScreen, { useSavedColors } from './src/screens/MyColoursScreen';
+import { COLORS } from './src/theme';
 
 interface State {
   hasError: boolean;
@@ -33,36 +34,104 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, State
   }
 }
 
-// Matches and Saved merged into My Colours (CD-13): one card per capture
-// — live scan on top, saved captures below, each with filterable matches
-// and its goes-with palette.
-// Planner (CD-17): pick a primary colour on a wheel instead of scanning.
-// Brands (CD-18): pick a brand colour, see cross-brand alternates by ΔE.
-type TabKey = 'scan' | 'wheel' | 'brands' | 'colours';
+// CD-40: 4 tabs — Scan · Brand Match · Planner · Saved.
+// "My Colours" renamed to "Saved", Brand Match promoted to top-level.
+type TabKey = 'scan' | 'brandmatch' | 'planner' | 'saved';
 
-const TABS: { key: TabKey; icon: string; label: string }[] = [
-  { key: 'scan', icon: '🎯', label: 'Scan' },
-  { key: 'wheel', icon: '🎡', label: 'Planner' },
-  { key: 'brands', icon: '🔁', label: 'Brands' },
-  { key: 'colours', icon: '🎨', label: 'My Colours' },
+// Renders an SVG icon from the design mock.
+// Web: native <svg> element via React.createElement (React Native Web passes it through).
+// Native: Unicode/emoji fallback.
+const NATIVE_ICONS: Record<TabKey, string> = {
+  scan: '🔍',
+  brandmatch: '⭐',
+  planner: '🎡',
+  saved: '🔖',
+};
+
+function TabIcon({ tab, color, size = 23 }: { tab: TabKey; color: string; size?: number }) {
+  if (Platform.OS !== 'web') {
+    return (
+      <Text style={{ fontSize: size * 0.85, lineHeight: size + 4, color }}>
+        {NATIVE_ICONS[tab]}
+      </Text>
+    );
+  }
+  // Web — inline SVG from the design mock (exact paths).
+  const ce = (React.createElement as any);
+  const p: Record<string, any> = {
+    width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
+    stroke: color, strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round',
+  };
+  switch (tab) {
+    case 'scan':
+      return ce('svg', p,
+        ce('circle', { key: 'c', cx: 11, cy: 11, r: 7 }),
+        ce('path', { key: 'p', d: 'M21 21l-4.3-4.3' }),
+      );
+    case 'brandmatch':
+      return ce('svg', p,
+        ce('path', { key: 'p', d: 'M12 3l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 8.7l5.4-.8z' }),
+      );
+    case 'planner':
+      return ce('svg', p,
+        ce('circle', { key: 'c', cx: 12, cy: 12, r: 8.5 }),
+        ce('path', { key: 'p', d: 'M12 3.5v17M3.5 12h17M6 6l12 12M18 6L6 18' }),
+      );
+    case 'saved':
+      return ce('svg', p,
+        ce('path', { key: 'p', d: 'M19 21l-7-4.5L5 21V5a2 2 0 012-2h10a2 2 0 012 2z' }),
+      );
+  }
+}
+
+// Active tab underline indicator (gradient on web, split view on native).
+function ActiveIndicator() {
+  if (Platform.OS === 'web') {
+    return (
+      <View
+        style={styles.activeIndicatorBase}
+        // @ts-ignore - web-only inline style for gradient
+        // eslint-disable-next-line react-native/no-inline-styles
+        {...({ style: { ...StyleSheet.flatten(styles.activeIndicatorBase), background: 'linear-gradient(90deg,#4D6BFF,#7C5CFF)' } })}
+      />
+    );
+  }
+  // Native: two-tone split approximating the gradient.
+  return (
+    <View style={styles.activeIndicatorBase}>
+      <View style={{ flex: 1, backgroundColor: COLORS.blue }} />
+      <View style={{ flex: 1, backgroundColor: COLORS.purple }} />
+    </View>
+  );
+}
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'scan', label: 'Scan' },
+  { key: 'brandmatch', label: 'Brand Match' },
+  { key: 'planner', label: 'Planner' },
+  { key: 'saved', label: 'Saved' },
 ];
 
-// Inactive tabs unmount entirely: that stops the camera scan loop when
-// you leave Scan, and makes Saved/Matches re-read storage on return.
+// Inactive tabs unmount entirely: stops the camera loop when you leave Scan,
+// and makes Saved re-read storage on return.
 function TabRoot() {
   const [tab, setTab] = useState<TabKey>('scan');
+  const { savedColors } = useSavedColors();
+  const savedCount = savedColors.length;
+
   return (
     <View style={styles.root}>
       <View style={{ flex: 1 }}>
         {tab === 'scan' && <CameraScreen />}
-        {tab === 'wheel' && <WheelScreen />}
-        {tab === 'brands' && <BrandMatchScreen />}
-        {tab === 'colours' && <MyColoursScreen />}
+        {tab === 'brandmatch' && <BrandMatchScreen />}
+        {tab === 'planner' && <WheelScreen />}
+        {tab === 'saved' && <MyColoursScreen />}
       </View>
       <SafeAreaView style={styles.tabBarSafe}>
         <View style={styles.tabBar}>
           {TABS.map(t => {
             const active = t.key === tab;
+            const iconColor = active ? COLORS.blue : COLORS.textMuted;
             return (
               <TouchableOpacity
                 key={t.key}
@@ -71,8 +140,18 @@ function TabRoot() {
                 accessibilityRole="tab"
                 accessibilityState={{ selected: active }}
               >
-                <Text style={[styles.tabIcon, !active && styles.tabIconInactive]}>{t.icon}</Text>
-                <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{t.label}</Text>
+                {active && <ActiveIndicator />}
+                <View style={[styles.tabIconWrap, { opacity: active ? 1 : 0.75 }]}>
+                  <TabIcon tab={t.key} color={iconColor} />
+                </View>
+                {t.key === 'saved' && savedCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{savedCount > 99 ? '99+' : savedCount}</Text>
+                  </View>
+                )}
+                <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
+                  {t.label}
+                </Text>
               </TouchableOpacity>
             );
           })}
@@ -94,50 +173,74 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0D0E1A' },
+  root: { flex: 1, backgroundColor: COLORS.bg },
   tabBarSafe: {
-    backgroundColor: 'rgba(13,14,26,0.98)',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: COLORS.bg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
   tabBar: {
     flexDirection: 'row',
-    paddingTop: 6,
-    paddingBottom: Platform.OS === 'web' ? 10 : 2,
+    height: 62,
+    paddingBottom: Platform.OS === 'web' ? 10 : 0,
   },
-  tabBtn: { flex: 1, alignItems: 'center', paddingVertical: 2 },
-  tabIcon: { fontSize: 20 },
-  tabIconInactive: { opacity: 0.45 },
+  tabBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingTop: 10,
+    position: 'relative',
+  },
+  tabIconWrap: { marginBottom: 3 },
   tabLabel: {
-    color: 'rgba(255,255,255,0.45)',
-    fontSize: 11,
-    fontWeight: '700',
-    marginTop: 2,
+    color: COLORS.textMuted,
+    fontSize: 10.5,
+    fontWeight: '600',
   },
-  tabLabelActive: { color: '#7B61FF' },
+  tabLabelActive: { color: '#fff' },
+  activeIndicatorBase: {
+    position: 'absolute',
+    top: 0,
+    width: 40,
+    height: 3,
+    borderRadius: 3,
+    overflow: 'hidden',
+    flexDirection: 'row',
+  },
+  badge: {
+    position: 'absolute',
+    top: 6,
+    right: 18,
+    backgroundColor: COLORS.purple,
+    borderRadius: 8,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    minWidth: 16,
+    alignItems: 'center',
+  },
+  badgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
   centered: {
     flex: 1,
-    backgroundColor: '#0D0E1A',
+    backgroundColor: COLORS.bg,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 32,
   },
   errorTitle: {
-    color: '#FFFFFF',
+    color: COLORS.text,
     fontSize: 24,
     fontWeight: '800',
     marginBottom: 12,
     textAlign: 'center',
   },
   errorText: {
-    color: 'rgba(255,255,255,0.55)',
+    color: COLORS.textMuted,
     fontSize: 14,
     textAlign: 'center',
     marginBottom: 24,
     fontFamily: 'monospace',
   },
   hintText: {
-    color: '#7B61FF',
+    color: COLORS.purple,
     fontSize: 16,
     textAlign: 'center',
     fontWeight: '600',
