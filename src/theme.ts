@@ -1,9 +1,15 @@
 export const COLORS = {
-  bg: '#0D0E1A',
-  surface: 'rgba(255,255,255,0.08)',
-  text: '#FFFFFF',
-  textMuted: 'rgba(255,255,255,0.55)',
-  accent: '#7B61FF',
+  bg: '#0A0E1A',
+  card: '#141A2E',
+  border: '#232C4A',
+  text: '#F2F4FA',
+  textMuted: '#8B93AD',
+  blue: '#4D6BFF',
+  purple: '#7C5CFF',
+  // Legacy aliases kept so existing code compiles unchanged
+  surface: '#141A2E',
+  accent: '#7C5CFF',
+  accentBlue: '#4D6BFF',
 };
 
 export const FONTS = {
