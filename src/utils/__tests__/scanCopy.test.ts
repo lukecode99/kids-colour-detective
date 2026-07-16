@@ -24,14 +24,17 @@ describe('scan page footer wording (CD-30, revised CD-33, CD-40)', () => {
     expect(SCAN_FOOTER_HINT).not.toContain('My Colours');
   });
 
-  it('both scan-screen variants render the shared constant, old wording is gone', () => {
+  it('the shared constant is rendered in CameraScreen via ScanDrawer, old wording is gone', () => {
     const src = fs.readFileSync(
       path.join(__dirname, '..', '..', 'screens', 'CameraScreen.tsx'),
       'utf8'
     );
-    // One render site in WebCameraScreen, one in NativeCameraScreen.
+    // CD-40 refactor: ScanDrawer is a shared component used by both WebCameraScreen
+    // and NativeCameraScreen, so {SCAN_FOOTER_HINT} appears once in source but
+    // is rendered by both variants at runtime.
     const renders = src.match(/\{SCAN_FOOTER_HINT\}/g) ?? [];
-    expect(renders).toHaveLength(2);
+    expect(renders.length).toBeGreaterThanOrEqual(1);
+    expect(src).toContain('ScanDrawer');
     expect(src).toContain("from '../utils/scanCopy'");
     expect(src).not.toContain('All matches, filters');
     expect(src).not.toContain('buy links live');
