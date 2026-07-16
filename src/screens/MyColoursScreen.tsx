@@ -1,4 +1,4 @@
-// My Colours tab (CD-13): the Saved and Matches tabs merged into one
+// Saved tab (CD-13, renamed CD-40): the Saved and Matches tabs merged into one
 // per-capture card list — thumbnail, editable room label, top-5 matches
 // and an expandable goes-with palette per card.
 // CD-19: the live scan renders on the Scan tab only — this screen shows
@@ -192,7 +192,7 @@ export default function MyColoursScreen() {
     <View style={styles.container}>
       <SafeAreaView style={{ flex: 1, paddingTop: Platform.OS === 'web' ? 48 : 0 }}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>My Colours</Text>
+          <Text style={styles.headerTitle}>Saved</Text>
         </View>
         {empty ? (
           <Text style={styles.empty}>
@@ -232,6 +232,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 12, marginBottom: 12,
     paddingHorizontal: 8, paddingVertical: 10,
     borderRadius: 14, backgroundColor: COLORS.surface,
+    borderWidth: 1, borderColor: COLORS.border,
   },
   cardHead: {
     flexDirection: 'row', alignItems: 'center',
@@ -244,7 +245,7 @@ const styles = StyleSheet.create({
   labelInput: {
     color: COLORS.text, fontSize: 13, marginTop: 4,
     paddingVertical: 2, paddingHorizontal: 0,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.2)',
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border,
   },
   deleteBtn: { paddingLeft: 12, paddingVertical: 8 },
   ideasToggle: {
