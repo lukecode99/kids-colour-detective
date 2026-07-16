@@ -87,14 +87,9 @@ function TabIcon({ tab, color, size = 23 }: { tab: TabKey; color: string; size?:
 // Active tab underline indicator (gradient on web, split view on native).
 function ActiveIndicator() {
   if (Platform.OS === 'web') {
-    return (
-      <View
-        style={styles.activeIndicatorBase}
-        // @ts-ignore - web-only inline style for gradient
-        // eslint-disable-next-line react-native/no-inline-styles
-        {...({ style: { ...StyleSheet.flatten(styles.activeIndicatorBase), background: 'linear-gradient(90deg,#4D6BFF,#7C5CFF)' } })}
-      />
-    );
+    // @ts-ignore - web-only background gradient
+    const webStyle = { ...StyleSheet.flatten(styles.activeIndicatorBase), background: 'linear-gradient(90deg,#4D6BFF,#7C5CFF)' };
+    return <View style={webStyle as any} />;
   }
   // Native: two-tone split approximating the gradient.
   return (
