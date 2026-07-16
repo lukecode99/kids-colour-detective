@@ -8,6 +8,8 @@ import {
   SafeAreaView,
   Platform,
   Linking,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
@@ -57,7 +59,7 @@ import {
 } from '../utils/calibrationSurface';
 import CaptureReticle from '../components/CaptureReticle';
 import PhotoPickerScreen from './PhotoPickerScreen';
-import { addSavedColor, newSavedColorId } from '../utils/savedColors';
+import { addSavedColor, loadSavedColors, newSavedColorId } from '../utils/savedColors';
 import { recordCaptureHintSave } from '../utils/captureHint';
 import { setCurrentColour } from '../utils/currentColour';
 import { SCAN_FOOTER_HINT } from '../utils/scanCopy';
@@ -65,9 +67,17 @@ import { COLORS, FONTS } from '../theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-const SCAN_INTERVAL_MS = 1500; // web fallback loop only
-const SCAN_FPS = 5; // native frame-processor readings — one every 200ms
-const SAMPLE_N = 9; // 9×9 median window for the centre reading
+const SCAN_INTERVAL_MS = 1500;
+const SCAN_FPS = 5;
+const SAMPLE_N = 9;
+
+// CD-40 drawer constants
+const TAB_BAR_HEIGHT = 76;
+const PEEK_HEIGHT = 168; // visible peek drawer above tab bar
+const EXPANDED_HEIGHT = Math.min(SCREEN_HEIGHT * 0.68, 480);
+const DRAWER_TRANSLATE_COLLAPSED = EXPANDED_HEIGHT - PEEK_HEIGHT;
+const BUTTON_SIZE = 88;
+const BUTTON_INNER = 72;
 
 type WhiteRefMode = 'off' | 'choosing' | 'calibrating' | 'locked';
 
@@ -84,8 +94,6 @@ function hintLabel(hint: 'dim' | 'warm', hasTorch: boolean): string {
     : '🎨 Warm light — try Calibrate matching';
 }
 
-// The toggle pill's label across the calibration journey (CD-34): the
-// locked state names the surface it was locked against.
 function whiteRefPillLabel(mode: WhiteRefMode, surface: CalibrationSurface | null): string {
   if (mode === 'locked' && surface) return calibratedLabel(surface);
   if (mode === 'locked') return 'Calibrate matching ✓';
@@ -93,12 +101,7 @@ function whiteRefPillLabel(mode: WhiteRefMode, surface: CalibrationSurface | nul
   return 'Calibrate matching';
 }
 
-// CD-34: entering "Calibrate matching" first asks what's in front of the
-// camera — ordinary white paper (everyone has a sheet) or an 18%
-// photographic grey card (the accurate reference). CD-27's ratio-only
-// correction handles either identically; the choice tailors guidance and
-// the locked pill. The "Get one" purchase link stays hidden behind
-// GREY_CARD_LINK_ENABLED until Amazon Associates approval.
+// CD-34: surface chooser before entering calibration.
 function CalibrationChooser({
   onChoose,
   onCancel,
@@ -145,10 +148,7 @@ function CalibrationChooser({
   );
 }
 
-// Guided calibration flow (CD-27): hold the chosen neutral surface in the
-// centre, tap to lock. Locks the stabilised median, so the button waits for
-// a steady reading rather than grabbing a single raw frame. Copy follows
-// the surface picked in the chooser (CD-34).
+// CD-27: guided calibration — hold chosen surface, lock the stabilised reading.
 function CalibrationOverlay({
   rgb,
   stable,
@@ -202,6 +202,199 @@ function CalibrationOverlay({
   );
 }
 
+// CD-40: the big shutter button floating over the drawer edge.
+// White outer ring + blue glow, inner circle filled with the live detected colour,
+// camera icon in white.
+function CaptureButton({
+  onCapture,
+  colorHex,
+  disabled,
+}: {
+  onCapture: () => void;
+  colorHex: string;
+  disabled: boolean;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = useCallback(() => {
+    Animated.timing(scale, { toValue: 0.92, duration: 70, useNativeDriver: true }).start();
+  }, [scale]);
+
+  const handlePressOut = useCallback(() => {
+    Animated.timing(scale, { toValue: 1, duration: 100, useNativeDriver: true }).start();
+  }, [scale]);
+
+  const handlePress = useCallback(() => {
+    if (!disabled) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onCapture();
+    }
+  }, [disabled, onCapture]);
+
+  return (
+    <Animated.View style={[styles.captureBtn, { transform: [{ scale }], opacity: disabled ? 0.45 : 1 }]}>
+      <TouchableOpacity
+        style={styles.captureBtnInner}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        onPress={handlePress}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel="Capture colour"
+        activeOpacity={1}
+      >
+        <View style={[styles.captureBtnColor, { backgroundColor: colorHex }]}>
+          {/* Camera SVG icon — inline on web, emoji on native */}
+          {Platform.OS === 'web'
+            ? (React.createElement as any)('svg',
+                { width: 30, height: 30, viewBox: '0 0 24 24', fill: 'none', stroke: '#fff', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                (React.createElement as any)('path', { d: 'M4 8h3l2-3h6l2 3h3a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z' }),
+                (React.createElement as any)('circle', { cx: 12, cy: 13.5, r: 3.6 }),
+              )
+            : <Text style={{ fontSize: 24 }}>📷</Text>
+          }
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+// CD-40: swipe-up drawer shared between web and native camera screens.
+// Peek state: handle + swatch + name + match summary + stats row.
+// Expanded state: calibration pill + filter controls + footer hint.
+function ScanDrawer({
+  colorInfo,
+  matches,
+  rawRgb,
+  whiteRefMode,
+  calibSurface,
+  savedCount,
+  filters,
+  candidates,
+  showFilters,
+  onToggleFilters,
+  onWhiteRefPress,
+  onOpenPhoto,
+}: {
+  colorInfo: ColorInfo;
+  matches: PaintMatch[];
+  rawRgb: Rgb;
+  whiteRefMode: WhiteRefMode;
+  calibSurface: CalibrationSurface | null;
+  savedCount: number;
+  filters: ReturnType<typeof useScanFilters>['filters'];
+  candidates: ReturnType<typeof useScanFilters>['candidates'];
+  showFilters: boolean;
+  onToggleFilters: () => void;
+  onWhiteRefPress: () => void;
+  onOpenPhoto: () => void;
+}) {
+  const translateY = useRef(new Animated.Value(DRAWER_TRANSLATE_COLLAPSED)).current;
+  const expandedRef = useRef(false);
+
+  const expand = useCallback(() => {
+    expandedRef.current = true;
+    Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+  }, [translateY]);
+
+  const collapse = useCallback(() => {
+    expandedRef.current = false;
+    Animated.spring(translateY, { toValue: DRAWER_TRANSLATE_COLLAPSED, useNativeDriver: true, bounciness: 0 }).start();
+  }, [translateY]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 6,
+      onPanResponderRelease: (_, g) => {
+        if (!expandedRef.current && g.dy < -25) expand();
+        else if (expandedRef.current && g.dy > 25) collapse();
+      },
+    })
+  ).current;
+
+  const top1Match = matches[0];
+  const deltaE = top1Match ? top1Match.deltaE.toFixed(1) : null;
+  const matchLine = top1Match
+    ? `Dulux match · ${top1Match.paint.name} · ΔE ${deltaE}`
+    : colorInfo.hex;
+
+  const hint = lightingHint(rawRgb);
+
+  return (
+    <Animated.View
+      style={[styles.drawer, { transform: [{ translateY }] }]}
+      {...panResponder.panHandlers}
+    >
+      {/* Drag handle */}
+      <View style={styles.drawerHandle} />
+
+      {/* Peek content */}
+      <View style={styles.drawerPeek}>
+        <View style={[styles.peekSwatch, { backgroundColor: colorInfo.hex }]} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.peekName} numberOfLines={1}>
+            {colorInfo.emoji} {top1Match ? top1Match.paint.name : colorInfo.name}
+          </Text>
+          <Text style={styles.peekMatch} numberOfLines={1}>{matchLine}</Text>
+        </View>
+        <TouchableOpacity onPress={expandedRef.current ? collapse : expand} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <Text style={styles.peekSwipe}>swipe up ↑</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Stats row */}
+      <View style={styles.statsRow}>
+        <View style={styles.statCell}>
+          <Text style={styles.statLabel}>CODE</Text>
+          <Text style={[styles.statValue, styles.statBlue]}>{colorInfo.hex}</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statCell}>
+          <Text style={styles.statLabel}>WHITE REF</Text>
+          <Text style={styles.statValue}>{whiteRefMode === 'locked' ? 'Set ✓' : 'None'}</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statCell}>
+          <Text style={styles.statLabel}>SAVED</Text>
+          <Text style={[styles.statValue, styles.statPurple]}>
+            {savedCount} colour{savedCount !== 1 ? 's' : ''}
+          </Text>
+        </View>
+      </View>
+
+      {/* Expanded content (calibration pill, lighting hint, filters, footer) */}
+      <View style={styles.drawerExpanded}>
+        {hint && whiteRefMode !== 'calibrating' && (
+          <Text style={styles.lightHintText}>{hintLabel(hint, true)}</Text>
+        )}
+        <View style={styles.expandedControls}>
+          <TouchableOpacity
+            style={[styles.pill, whiteRefMode !== 'off' && styles.pillActive]}
+            onPress={onWhiteRefPress}
+          >
+            <Text style={[styles.pillText, whiteRefMode !== 'off' && styles.pillTextActive]}>
+              {whiteRefPillLabel(whiteRefMode, calibSurface)}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.pill} onPress={onOpenPhoto}>
+            <Text style={styles.pillText}>🖼 Photo</Text>
+          </TouchableOpacity>
+        </View>
+        <FilterToggleLine
+          filters={filters}
+          candidateCount={candidates.length}
+          expanded={showFilters}
+          onPress={onToggleFilters}
+        />
+        {showFilters && <FiltersPanel filters={filters} onToggle={onToggleFilters as any} />}
+        {showFilters && candidates.length === 0 && <FilterEmptyNotice />}
+        <Text style={styles.scanHintLine}>{SCAN_FOOTER_HINT}</Text>
+      </View>
+    </Animated.View>
+  );
+}
+
 interface WebColorState {
   info: ColorInfo;
   matches: PaintMatch[];
@@ -223,11 +416,10 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   const [rawRgb, setRawRgb] = useState<Rgb>([128, 128, 128]);
   const [calibRgb, setCalibRgb] = useState<Rgb>([128, 128, 128]);
   const [calibStable, setCalibStable] = useState(false);
-  // CD-29: the scan page runs on its own persisted filter set, decoupled
-  // from the My Colours / photo-picker globals.
   const { filters, onToggle, candidates } = useScanFilters();
   const [showFilters, setShowFilters] = useState(false);
-  // Snapshot for saveColor, whose deps stay [] via the functional setState.
+  const [savedCount, setSavedCount] = useState(0);
+
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
 
@@ -239,6 +431,10 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   whiteRefModeRef.current = whiteRefMode;
 
   useEffect(() => {
+    loadSavedColors().then(list => setSavedCount(list.length));
+  }, []);
+
+  useEffect(() => {
     let stream: any;
     (navigator as any).mediaDevices
       .getUserMedia({ video: { facingMode: 'environment' }, audio: false })
@@ -246,7 +442,6 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         stream = s;
         streamRef.current = s;
         if (videoRef.current) { videoRef.current.srcObject = s; videoRef.current.play(); }
-        // Check torch support
         const track = s.getVideoTracks()[0];
         if (track) {
           const caps = track.getCapabilities?.() as any;
@@ -275,9 +470,6 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       const canvas = canvasRef.current;
       if (!video || !canvas || video.readyState < 2) return;
       try {
-        // 9×9 median over the centre region instead of a 1×1 mean: one
-        // outlier pixel (speckle, edge, glare) can no longer swing the
-        // reading.
         canvas.width = SAMPLE_N; canvas.height = SAMPLE_N;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
@@ -292,9 +484,6 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         const raw = medianRgb(pixels);
         rawRgbRef.current = raw;
         setRawRgb(raw);
-
-        // Median over recent steady frames irons out the remaining
-        // frame-to-frame wobble so the top match stays put.
         historyRef.current = pushReading(historyRef.current, raw);
         const stab = stabilizedRgb(historyRef.current);
         stabRgbRef.current = stab;
@@ -310,15 +499,12 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
           matches: matchPaintsLab(rgbToLab(r, g, b), 5, candidates),
           r, g, b,
         });
-        // Feed the My Colours tab.
         setCurrentColour({ rgb: [r, g, b], hex: info.hex, name: info.name });
       } catch {}
     }, SCAN_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [candidates]);
 
-  // Entering the flow opens the surface chooser (CD-34); pressing the pill
-  // at any later stage backs all the way out.
   const handleWhiteRefPress = useCallback(() => {
     if (whiteRefModeRef.current === 'off') {
       setWhiteRefMode('choosing');
@@ -331,13 +517,10 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
 
   const chooseSurface = useCallback((surface: CalibrationSurface) => {
     setCalibSurface(surface);
-    // Remember the choice so the chooser highlights it next time.
     recordSurfaceChoice(surface);
     setWhiteRefMode('calibrating');
   }, []);
 
-  // Lock the stabilised median, not a single raw frame (CD-27) — the
-  // overlay's Lock button is disabled until the reading is steady.
   const lockWhiteRef = useCallback(() => {
     const [r, g, b] = stabRgbRef.current;
     whiteRefValueRef.current = { r, g, b };
@@ -345,21 +528,16 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   }, []);
 
   const saveColor = useCallback(() => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setColorState(cs => {
-      // Centre-crop thumbnail from the live video so the saved entry shows
-      // what was actually scanned.
       let thumb: string | undefined;
       try {
         const video = videoRef.current;
         if (video && video.readyState >= 2) {
           const c = document.createElement('canvas');
-          c.width = 96;
-          c.height = 96;
+          c.width = 96; c.height = 96;
           const ctx = c.getContext('2d');
           if (ctx) {
-            const vw = video.videoWidth;
-            const vh = video.videoHeight;
+            const vw = video.videoWidth, vh = video.videoHeight;
             const s = Math.min(vw, vh) * 0.5;
             ctx.drawImage(video, (vw - s) / 2, (vh - s) / 2, s, s, 0, 0, 96, 96);
             thumb = c.toDataURL('image/jpeg', 0.7);
@@ -375,13 +553,10 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
           match: bestMatchLabel(cs.matches),
           bestMatch: bestMatchInfo(cs.matches),
           timestamp: Date.now(),
-          // CD-20 seeding, via the scan page's own set since CD-29: what was
-        // matched on screen is what the capture starts filtered by.
           filters: filtersRef.current,
         },
         thumb
-      );
-      // CD-28: every save counts towards dismissing the first-run hint.
+      ).then(list => setSavedCount(list.length));
       recordCaptureHintSave();
       return cs;
     });
@@ -397,6 +572,7 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   }
 
   const { info: colorInfo, matches } = colorState;
+  const calibrating = whiteRefMode === 'calibrating' || whiteRefMode === 'choosing';
 
   return (
     <View style={styles.container}>
@@ -407,37 +583,22 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       })}
       {React.createElement('canvas', { ref: canvasRef, style: { display: 'none' } })}
 
-      <SafeAreaView style={styles.topOverlay} pointerEvents="box-none">
-        <View style={styles.toggleContainer}>
-          {torchSupported && (
-            <>
-              <TouchableOpacity style={[styles.togglePill, torchOn && styles.toggleActiveRef]} onPress={toggleTorch}>
-                <Text style={[FONTS.toggle, styles.toggleText, torchOn && styles.toggleTextActive]}>🔦</Text>
-              </TouchableOpacity>
-              <View style={styles.toggleDivider} />
-            </>
-          )}
+      {/* Viewfinder reticle */}
+      <CaptureReticle disabled={calibrating} />
+
+      {/* Torch icon button — top right */}
+      {torchSupported && (
+        <SafeAreaView style={styles.torchArea} pointerEvents="box-none">
           <TouchableOpacity
-            style={[styles.togglePill, whiteRefMode !== 'off' && styles.toggleActiveRef]}
-            onPress={handleWhiteRefPress}
+            style={[styles.torchBtn, torchOn && styles.torchBtnOn]}
+            onPress={toggleTorch}
           >
-            <Text style={[FONTS.toggle, styles.toggleText, whiteRefMode !== 'off' && styles.toggleTextActive]}>
-              {whiteRefPillLabel(whiteRefMode, calibSurface)}
-            </Text>
+            <Text style={{ fontSize: 20 }}>🔦</Text>
           </TouchableOpacity>
-          <View style={styles.toggleDivider} />
-          <TouchableOpacity style={styles.togglePill} onPress={onOpenPhoto}>
-            <Text style={[FONTS.toggle, styles.toggleText]}>🖼 Photo</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+        </SafeAreaView>
+      )}
 
-      {/* Tappable capture reticle (CD-12) */}
-      <CaptureReticle
-        onCapture={saveColor}
-        disabled={whiteRefMode === 'calibrating' || whiteRefMode === 'choosing'}
-      />
-
+      {/* Calibration overlays */}
       {whiteRefMode === 'choosing' && (
         <CalibrationChooser onChoose={chooseSurface} onCancel={handleWhiteRefPress} />
       )}
@@ -451,45 +612,30 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         />
       )}
 
-      <View style={styles.bottomPanel}>
-        {/* Save area: swatch + name block stay tappable; the filter rows
-            below are their own controls (CD-29), outside the save touch. */}
-        <TouchableOpacity onPress={saveColor} activeOpacity={0.85}>
-          <View style={[styles.swatchStrip, { backgroundColor: colorInfo.hex }]} />
-          {(() => {
-            const hint = lightingHint(rawRgb);
-            return hint && !torchOn && whiteRefMode !== 'calibrating' && whiteRefMode !== 'choosing' ? (
-              <Text style={styles.lightHintText}>{hintLabel(hint, torchSupported)}</Text>
-            ) : null;
-          })()}
-          <View style={styles.colorInfoRow}>
-            <View style={styles.colorTextBlock}>
-              <Text style={[FONTS.colorName, styles.colorNameText]} numberOfLines={2}>
-                {matches[0] ? matches[0].paint.name : colorInfo.name}
-              </Text>
-              <Text style={[FONTS.colorNameSub, styles.hexText]}>
-                {matches[0]
-                  ? `${matches[0].paint.brand} · ${matches[0].matchPercent}% match · ${matches[0].closeness}`
-                  : colorInfo.hex}
-              </Text>
-              <Text style={styles.scanSubLine}>
-                {colorInfo.name} · {colorInfo.hex}
-              </Text>
-            </View>
-            <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginLeft: 8 }}>tap to save</Text>
-          </View>
-        </TouchableOpacity>
-        {/* Scan-only filters (CD-29) */}
-        <FilterToggleLine
-          filters={filters}
-          candidateCount={candidates.length}
-          expanded={showFilters}
-          onPress={() => setShowFilters(s => !s)}
+      {/* Big capture button floating over the drawer */}
+      <View style={styles.captureBtnArea} pointerEvents="box-none">
+        <CaptureButton
+          onCapture={saveColor}
+          colorHex={colorInfo.hex}
+          disabled={calibrating}
         />
-        {showFilters && <FiltersPanel filters={filters} onToggle={onToggle} />}
-        {showFilters && candidates.length === 0 && <FilterEmptyNotice />}
-        <Text style={styles.scanHintLine}>{SCAN_FOOTER_HINT}</Text>
       </View>
+
+      {/* Swipe-up drawer */}
+      <ScanDrawer
+        colorInfo={colorInfo}
+        matches={matches}
+        rawRgb={rawRgb}
+        whiteRefMode={whiteRefMode}
+        calibSurface={calibSurface}
+        savedCount={savedCount}
+        filters={filters}
+        candidates={candidates}
+        showFilters={showFilters}
+        onToggleFilters={() => setShowFilters(s => !s)}
+        onWhiteRefPress={handleWhiteRefPress}
+        onOpenPhoto={onOpenPhoto}
+      />
     </View>
   );
 }
@@ -512,8 +658,6 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
 
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
-  // A modest video format: the frame processor only reads 81 centre pixels,
-  // so 720p keeps the per-frame buffer copy cheap without hurting accuracy.
   const format = useCameraFormat(device, [{ videoResolution: { width: 1280, height: 720 } }]);
   const [colorInfo, setColorInfo] = useState<ColorInfo>({
     name: 'Detecting…',
@@ -528,10 +672,9 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   const [torchOn, setTorchOn] = useState(false);
   const [isUnstable, setIsUnstable] = useState(false);
   const [calibStable, setCalibStable] = useState(false);
-  // CD-29: the scan page runs on its own persisted filter set, decoupled
-  // from the My Colours / photo-picker globals.
   const { filters, onToggle, candidates } = useScanFilters();
   const [showFilters, setShowFilters] = useState(false);
+  const [savedCount, setSavedCount] = useState(0);
 
   const cameraRef = useRef<any>(null);
   const historyRef = useRef<Rgb[]>([]);
@@ -541,9 +684,10 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   const whiteRefModeRef = useRef<WhiteRefMode>('off');
   whiteRefModeRef.current = whiteRefMode;
 
-  // JS half of the scan loop: the worklet hands over SAMPLE_N×SAMPLE_N RGB
-  // triplets and the CD-6 pipeline (median → stability window → white-card
-  // correction) runs exactly as it did for the old photo-based loop.
+  useEffect(() => {
+    loadSavedColors().then(list => setSavedCount(list.length));
+  }, []);
+
   const onSample = useRunOnJS(
     (flat: number[]) => {
       const pixels: Rgb[] = [];
@@ -553,14 +697,10 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       const raw = medianRgb(pixels);
       rawRgbRef.current = raw;
       setRawRgb(raw);
-
-      // Median over recent steady frames irons out frame-to-frame wobble
-      // so the same wall keeps the same top match.
       historyRef.current = pushReading(historyRef.current, raw);
       const stable = isStable(historyRef.current);
       setIsUnstable(historyRef.current.length >= 2 && !stable);
       setCalibStable(stable);
-
       const stab = stabilizedRgb(historyRef.current);
       stabRgbRef.current = stab;
       setCalibRgb(stab);
@@ -568,18 +708,14 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       if (whiteRefModeRef.current === 'locked' && whiteRefValueRef.current) {
         [r, g, b] = applyWhiteRef([r, g, b], whiteRefValueRef.current);
       }
-
       const info = getColorInfo(r, g, b, true);
       setColorInfo(info);
       setMatches(matchPaintsLab(rgbToLab(r, g, b), 5, candidates));
-      // Feed the My Colours tab.
       setCurrentColour({ rgb: [r, g, b], hex: info.hex, name: info.name });
     },
     [candidates]
   );
 
-  // With pixelFormat="rgb", iOS delivers BGRA bytes and Android RGBA —
-  // hence the per-platform channel order below.
   const isIOS = Platform.OS === 'ios';
   const frameProcessor = useFrameProcessor(
     (frame: any) => {
@@ -588,8 +724,6 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         'worklet';
         const data = new Uint8Array(frame.toArrayBuffer());
         const bpr = frame.bytesPerRow;
-        // 9×9 grid over the centre 15% region — same sampling window the
-        // photo crop used, read directly from the preview frame.
         const rw = frame.width * 0.15;
         const rh = frame.height * 0.15;
         const x0 = (frame.width - rw) / 2;
@@ -613,8 +747,6 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
     [onSample, isIOS]
   );
 
-  // Entering the flow opens the surface chooser (CD-34); pressing the pill
-  // at any later stage backs all the way out.
   const handleWhiteRefPress = useCallback(() => {
     if (whiteRefModeRef.current === 'off') {
       setWhiteRefMode('choosing');
@@ -627,13 +759,10 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
 
   const chooseSurface = useCallback((surface: CalibrationSurface) => {
     setCalibSurface(surface);
-    // Remember the choice so the chooser highlights it next time.
     recordSurfaceChoice(surface);
     setWhiteRefMode('calibrating');
   }, []);
 
-  // Lock the stabilised median, not a single raw frame (CD-27) — the
-  // overlay's Lock button is disabled until the reading is steady.
   const lockWhiteRef = useCallback(() => {
     const [r, g, b] = stabRgbRef.current;
     whiteRefValueRef.current = { r, g, b };
@@ -641,10 +770,6 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   }, []);
 
   const saveColor = useCallback(async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    // The scan loop no longer produces photo files, so grab a preview
-    // snapshot (no shutter) for the thumbnail; the snapshot file is
-    // temporary, so savedColors copies it to app storage.
     let thumb: string | undefined;
     try {
       const snap = await cameraRef.current?.takeSnapshot({ quality: 70 });
@@ -667,13 +792,10 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         match: bestMatchLabel(matches),
         bestMatch: bestMatchInfo(matches),
         timestamp: Date.now(),
-        // CD-20 seeding, via the scan page's own set since CD-29: what was
-        // matched on screen is what the capture starts filtered by.
         filters,
       },
       thumb
-    );
-    // CD-28: every save counts towards dismissing the first-run hint.
+    ).then(list => setSavedCount(list.length));
     recordCaptureHintSave();
   }, [colorInfo, matches, filters]);
 
@@ -706,11 +828,12 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   }
 
   const { Camera } = VisionCamera;
+  const calibrating = whiteRefMode === 'calibrating' || whiteRefMode === 'choosing';
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
 
-      {/* Full-screen camera with the live scan-loop frame processor */}
       <Camera
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
@@ -722,49 +845,27 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         pixelFormat="rgb"
       />
 
-      {/* Top-left: colour name overlay — tappable to save */}
-      <SafeAreaView style={styles.nTopLeft} pointerEvents="box-none">
-        <TouchableOpacity onPress={saveColor} activeOpacity={0.8} style={styles.nColorNameTouchable}>
-          <Text style={styles.nColorName} numberOfLines={2}>
-            {matches[0] ? matches[0].paint.name : colorInfo.name}
-          </Text>
-          <Text style={styles.nColorHex}>
-            {matches[0]
-              ? `${matches[0].paint.brand} · ${matches[0].matchPercent}% · ${matches[0].closeness}`
-              : colorInfo.hex}
-          </Text>
-        </TouchableOpacity>
-      </SafeAreaView>
+      {/* Viewfinder reticle */}
+      <CaptureReticle disabled={calibrating} />
 
-      {/* Top-right: circular torch + save buttons */}
-      <SafeAreaView style={styles.nTopRight} pointerEvents="box-none">
-        <View style={styles.nCircleBtnRow}>
-          <TouchableOpacity
-            style={[styles.nCircleBtn, torchOn && styles.nCircleBtnTorch]}
-            onPress={() => setTorchOn(t => !t)}
-          >
-            <Text style={styles.nCircleBtnText}>🔦</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.nCircleBtn} onPress={saveColor}>
-            <Text style={styles.nCircleBtnText}>💾</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-
-      {/* Centre crosshair — tappable capture control (CD-12) */}
-      <CaptureReticle
-        onCapture={saveColor}
-        disabled={whiteRefMode === 'calibrating' || whiteRefMode === 'choosing'}
-      />
-
-      {/* Stability indicator — below crosshair, above bottom panel */}
+      {/* Stability indicator */}
       {isUnstable && !lightingHint(rawRgb) && (
-        <View style={styles.nStabilityBar} pointerEvents="none">
-          <Text style={styles.nStabilityText}>● Unstable — move closer to the surface</Text>
+        <View style={styles.stabilityBar} pointerEvents="none">
+          <Text style={styles.stabilityText}>● Unstable — move closer to the surface</Text>
         </View>
       )}
 
-      {/* Guided calibration (CD-27: grey card or white paper) */}
+      {/* Torch icon button — top right */}
+      <SafeAreaView style={styles.torchArea} pointerEvents="box-none">
+        <TouchableOpacity
+          style={[styles.torchBtn, torchOn && styles.torchBtnOn]}
+          onPress={() => setTorchOn(t => !t)}
+        >
+          <Text style={{ fontSize: 20 }}>🔦</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+
+      {/* Calibration overlays */}
       {whiteRefMode === 'choosing' && (
         <CalibrationChooser onChoose={chooseSurface} onCancel={handleWhiteRefPress} />
       )}
@@ -778,52 +879,30 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         />
       )}
 
-      {/* Bottom slim panel */}
-      <View style={styles.nBottomPanel}>
-        {/* Controls: White Ref + Photo */}
-        <View style={styles.nControlRow}>
-          <View style={{ flex: 1 }} />
-          <TouchableOpacity
-            style={[styles.nPill, whiteRefMode !== 'off' && styles.nPillActiveRef]}
-            onPress={handleWhiteRefPress}
-          >
-            <Text style={[styles.nPillText, whiteRefMode !== 'off' && styles.nPillTextActive]}>
-              {whiteRefPillLabel(whiteRefMode, calibSurface)}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.nPill} onPress={onOpenPhoto}>
-            <Text style={styles.nPillText}>🖼 Photo</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Colour swatch strip */}
-        <View style={[styles.nSwatchStrip, { backgroundColor: colorInfo.hex }]} />
-
-        {(() => {
-          const hint = lightingHint(rawRgb);
-          return hint && !torchOn && whiteRefMode !== 'calibrating' ? (
-            <Text style={styles.lightHintText}>{hintLabel(hint, true)}</Text>
-          ) : null;
-        })()}
-
-        {/* Underlying colour, demoted below the paint match */}
-        <View style={styles.nMatchRow}>
-          <Text style={styles.nMatchName} numberOfLines={1}>
-            {colorInfo.name}
-          </Text>
-          <Text style={styles.nMatchHex}>{colorInfo.hex}</Text>
-        </View>
-        {/* Scan-only filters (CD-29) */}
-        <FilterToggleLine
-          filters={filters}
-          candidateCount={candidates.length}
-          expanded={showFilters}
-          onPress={() => setShowFilters(s => !s)}
+      {/* Big capture button floating over the drawer */}
+      <View style={styles.captureBtnArea} pointerEvents="box-none">
+        <CaptureButton
+          onCapture={saveColor}
+          colorHex={colorInfo.hex}
+          disabled={calibrating}
         />
-        {showFilters && <FiltersPanel filters={filters} onToggle={onToggle} />}
-        {showFilters && candidates.length === 0 && <FilterEmptyNotice />}
-        <Text style={styles.scanHintLine}>{SCAN_FOOTER_HINT}</Text>
       </View>
+
+      {/* Swipe-up drawer */}
+      <ScanDrawer
+        colorInfo={colorInfo}
+        matches={matches}
+        rawRgb={rawRgb}
+        whiteRefMode={whiteRefMode}
+        calibSurface={calibSurface}
+        savedCount={savedCount}
+        filters={filters}
+        candidates={candidates}
+        showFilters={showFilters}
+        onToggleFilters={() => setShowFilters(s => !s)}
+        onWhiteRefPress={handleWhiteRefPress}
+        onOpenPhoto={onOpenPhoto}
+      />
     </View>
   );
 }
@@ -836,49 +915,146 @@ const styles = StyleSheet.create({
   },
   permTitle: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginBottom: 12, textAlign: 'center' },
   permText: { color: COLORS.textMuted, fontSize: 16, textAlign: 'center', marginBottom: 24 },
-  permButton: { backgroundColor: COLORS.accent, paddingHorizontal: 32, paddingVertical: 14, borderRadius: 30 },
+  permButton: { backgroundColor: COLORS.blue, paddingHorizontal: 32, paddingVertical: 14, borderRadius: 30 },
   permButtonText: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
 
-  // --- Web layout styles (WebCameraScreen) ---
-  topOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
-    alignItems: 'flex-end', paddingTop: 12, paddingRight: 16,
+  // --- Torch button (top-right icon button) ---
+  torchArea: {
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
+    alignItems: 'flex-end',
   },
-  toggleContainer: {
-    flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 24, padding: 4, alignItems: 'center',
+  torchBtn: {
+    width: 46, height: 46, borderRadius: 23,
+    backgroundColor: 'rgba(10,14,26,0.55)',
+    borderWidth: 1, borderColor: 'rgba(77,107,255,0.35)',
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 16, marginTop: 66,
   },
-  togglePill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
-  toggleActive: { backgroundColor: COLORS.accent },
-  toggleActiveRef: { backgroundColor: '#d4a017' },
-  toggleDivider: { width: 1, height: 20, backgroundColor: 'rgba(255,255,255,0.25)', marginHorizontal: 2 },
-  toggleText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '700' },
-  toggleTextActive: { color: COLORS.text },
+  torchBtnOn: { backgroundColor: 'rgba(212,160,23,0.75)', borderColor: '#d4a017' },
 
-  bottomPanel: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: 'rgba(13, 14, 26, 0.88)', paddingBottom: 40,
+  // Stability indicator
+  stabilityBar: {
+    position: 'absolute',
+    bottom: TAB_BAR_HEIGHT + PEEK_HEIGHT + 48,
+    left: 0, right: 0,
+    alignItems: 'center', zIndex: 6,
   },
-  swatchStrip: { height: 8, width: '100%' },
-  colorInfoRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 24, paddingTop: 16, paddingBottom: 8,
+  stabilityText: {
+    color: '#FFD700',
+    fontSize: 13, fontWeight: '700',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 14, paddingVertical: 5,
+    borderRadius: 14, overflow: 'hidden',
   },
-  colorTextBlock: { flex: 1 },
-  colorNameText: { color: COLORS.text, fontSize: 52, fontWeight: '800', letterSpacing: -1 },
-  hexText: { color: COLORS.textMuted, fontSize: 22, fontWeight: '600', marginTop: 2 },
 
-  // --- White-card calibration overlay (shared) ---
+  // --- Capture button (floating over drawer edge) ---
+  captureBtnArea: {
+    position: 'absolute',
+    left: 0, right: 0,
+    bottom: TAB_BAR_HEIGHT + PEEK_HEIGHT - BUTTON_SIZE / 2,
+    alignItems: 'center',
+    zIndex: 25,
+  },
+  captureBtn: {
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
+    borderRadius: BUTTON_SIZE / 2,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Blue glow ring
+    shadowColor: '#4D6BFF',
+    shadowOpacity: 0.55,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 12,
+  },
+  captureBtnInner: {
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
+    borderRadius: BUTTON_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  captureBtnColor: {
+    width: BUTTON_INNER,
+    height: BUTTON_INNER,
+    borderRadius: BUTTON_INNER / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // --- Swipe-up drawer ---
+  drawer: {
+    position: 'absolute',
+    left: 0, right: 0,
+    bottom: TAB_BAR_HEIGHT,
+    height: EXPANDED_HEIGHT,
+    backgroundColor: 'transparent',
+    zIndex: 20,
+  },
+
+  // The drawer's visual background is inside (so the capture button overlaps it cleanly)
+  drawerHandle: {
+    width: 44, height: 5, borderRadius: 3,
+    backgroundColor: COLORS.blue,
+    opacity: 0.55,
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 16,
+  },
+
+  drawerPeek: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 22,
+    gap: 13,
+    backgroundColor: 'rgba(20,26,46,0.96)',
+  },
+
+  peekSwatch: {
+    width: 48, height: 48, borderRadius: 14,
+    borderWidth: 2, borderColor: COLORS.border,
+  },
+
+  peekName: { color: COLORS.text, fontSize: 23, fontWeight: '800', letterSpacing: -0.4 },
+  peekMatch: { color: COLORS.textMuted, fontSize: 11.5, fontWeight: '600', marginTop: 2 },
+  peekSwipe: { color: COLORS.purple, fontSize: 12, fontWeight: '700', flexShrink: 0 },
+
+  statsRow: {
+    flexDirection: 'row',
+    borderTopWidth: 1, borderTopColor: COLORS.border,
+    marginTop: 14,
+    paddingTop: 12,
+    paddingBottom: 14,
+    backgroundColor: 'rgba(20,26,46,0.96)',
+  },
+  statCell: { flex: 1, alignItems: 'center' },
+  statDivider: { width: 1, backgroundColor: COLORS.border },
+  statLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', letterSpacing: 0.3 },
+  statValue: { color: COLORS.text, fontSize: 14, fontWeight: '700', marginTop: 3 },
+  statBlue: { color: COLORS.blue },
+  statPurple: { color: COLORS.purple },
+
+  drawerExpanded: {
+    flex: 1,
+    backgroundColor: 'rgba(10,14,26,0.98)',
+    paddingBottom: 20,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+
+  // --- Calibration overlays ---
   calibOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center', justifyContent: 'flex-end',
-    paddingBottom: 180, zIndex: 20,
+    paddingBottom: TAB_BAR_HEIGHT + PEEK_HEIGHT + 20, zIndex: 30,
   },
   calibCard: {
-    backgroundColor: 'rgba(13,14,26,0.92)', borderRadius: 16,
+    backgroundColor: 'rgba(13,14,26,0.94)', borderRadius: 16,
     paddingHorizontal: 20, paddingVertical: 16,
     marginHorizontal: 24, maxWidth: 420,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: COLORS.border,
   },
   calibTitle: { color: COLORS.text, fontSize: 17, fontWeight: '800', marginBottom: 6 },
   calibText: { color: COLORS.textMuted, fontSize: 14, lineHeight: 19 },
@@ -893,129 +1069,45 @@ const styles = StyleSheet.create({
   calibCancel: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20 },
   calibCancelText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '700' },
   calibLock: {
-    backgroundColor: COLORS.accent, paddingHorizontal: 20, paddingVertical: 9, borderRadius: 20,
+    backgroundColor: COLORS.blue, paddingHorizontal: 20, paddingVertical: 9, borderRadius: 20,
   },
   calibLockDisabled: { backgroundColor: 'rgba(255,255,255,0.15)' },
   calibLockText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
-  // --- Surface chooser (CD-34, inside the calibration card) ---
   chooserBtn: {
-    backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12,
+    backgroundColor: COLORS.surface, borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 10, marginTop: 10,
     borderWidth: 1, borderColor: 'transparent',
   },
-  chooserBtnPreferred: { borderColor: 'rgba(255,255,255,0.4)' },
+  chooserBtnPreferred: { borderColor: COLORS.border },
   chooserBtnTitle: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
   chooserBtnSub: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginTop: 2 },
   chooserGetOne: {
     alignSelf: 'flex-start', marginTop: 10,
     paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 14, backgroundColor: COLORS.accent,
+    borderRadius: 14, backgroundColor: COLORS.blue,
   },
   chooserGetOneText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
-  // --- Lighting hint (shared, inside bottom panel) ---
+  // --- In-drawer controls ---
   lightHintText: {
     color: '#FFD700', fontSize: 12, fontWeight: '700',
     paddingHorizontal: 20, paddingTop: 8,
   },
-
-  // --- Native layout styles (NativeCameraScreen) ---
-  nTopLeft: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
-    alignItems: 'flex-start',
+  expandedControls: {
+    flexDirection: 'row', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6, gap: 6,
   },
-  nColorNameTouchable: {
-    paddingLeft: 20, paddingTop: 14, maxWidth: SCREEN_WIDTH * 0.62,
-  },
-  nColorName: {
-    color: '#FFFFFF',
-    fontSize: 38,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    lineHeight: 44,
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 8,
-  },
-  nColorHex: {
-    color: 'rgba(255,255,255,0.65)',
-    fontSize: 15,
-    fontWeight: '600',
-    marginTop: 3,
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-
-  nTopRight: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
-    alignItems: 'flex-end',
-  },
-  nCircleBtnRow: {
-    flexDirection: 'row', gap: 10, paddingRight: 16, paddingTop: 14,
-  },
-  nCircleBtn: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  nCircleBtnTorch: { backgroundColor: 'rgba(212,160,23,0.75)' },
-  nCircleBtnText: { fontSize: 20 },
-
-  nStabilityBar: {
-    position: 'absolute',
-    bottom: 135,
-    left: 0, right: 0,
-    alignItems: 'center', zIndex: 6,
-  },
-  nStabilityText: {
-    color: '#FFD700',
-    fontSize: 13,
-    fontWeight: '700',
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-
-  nBottomPanel: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: 'rgba(13,14,26,0.82)',
-    paddingBottom: 34,
-  },
-  nControlRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6,
-    gap: 6,
-  },
-  nPill: {
+  pill: {
     paddingHorizontal: 12, paddingVertical: 5,
-    borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14, backgroundColor: COLORS.surface,
+    borderWidth: 1, borderColor: COLORS.border,
   },
-  nPillActive: { backgroundColor: COLORS.accent },
-  nPillActiveRef: { backgroundColor: '#d4a017' },
-  nPillText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
-  nPillTextActive: { color: '#fff' },
-
-  nSwatchStrip: { height: 5, width: '100%' },
-
-  // --- Cross-tab hints (shared) ---
-  scanSubLine: { color: 'rgba(255,255,255,0.4)', fontSize: 14, fontWeight: '600', marginTop: 4 },
+  pillActive: { backgroundColor: '#d4a017', borderColor: '#d4a017' },
+  pillText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
+  pillTextActive: { color: '#fff' },
   scanHintLine: {
     color: 'rgba(255,255,255,0.35)', fontSize: 12, fontWeight: '600',
-    // The CD-30 sentence is longer than one iPhone-width line at this
-    // size: let it wrap cleanly (no numberOfLines, so never truncated).
     lineHeight: 16,
     paddingHorizontal: 24, paddingTop: 4, paddingBottom: 2,
   },
-
-  nMatchRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6,
-  },
-  nMatchName: { color: COLORS.text, fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
-  nMatchHex: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600' },
 });
-
