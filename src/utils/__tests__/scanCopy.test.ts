@@ -6,11 +6,12 @@ import { SCAN_FOOTER_HINT } from '../scanCopy';
 // exact sentence and prove both scan-screen variants actually render it. The
 // camera screens can't be mounted under the node test environment (native
 // vision-camera requires), so the render check reads the source directly.
+// CD-40: tab renamed from "My Colours" to "Saved".
 
-describe('scan page footer wording (CD-30, revised CD-33)', () => {
+describe('scan page footer wording (CD-30, revised CD-33, CD-40)', () => {
   it('is Luke\'s exact sentence, character for character', () => {
     expect(SCAN_FOOTER_HINT).toBe(
-      'See your captured colours and filter by brand and paint type in the My Colours tab'
+      'See your captured colours and filter by brand and paint type in the Saved tab'
     );
   });
 
@@ -18,9 +19,9 @@ describe('scan page footer wording (CD-30, revised CD-33)', () => {
     expect(SCAN_FOOTER_HINT).not.toContain('image captures');
   });
 
-  it("keeps the 'My Colours' tab capitalisation", () => {
-    expect(SCAN_FOOTER_HINT).toContain('My Colours tab');
-    expect(SCAN_FOOTER_HINT).not.toContain('my colours');
+  it("keeps the 'Saved' tab capitalisation (CD-40 rename)", () => {
+    expect(SCAN_FOOTER_HINT).toContain('Saved tab');
+    expect(SCAN_FOOTER_HINT).not.toContain('My Colours');
   });
 
   it('both scan-screen variants render the shared constant, old wording is gone', () => {
