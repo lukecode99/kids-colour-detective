@@ -1,103 +1,19 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Animated, StyleSheet } from 'react-native';
-import * as Haptics from 'expo-haptics';
-import { useCaptureHint } from '../utils/captureHint';
-import { COLORS } from '../theme';
+import React from 'react';
+import { View, StyleSheet } from 'react-native';
 
-export const CROSSHAIR_SIZE = 140;
+export const CROSSHAIR_SIZE = 132;
 
-// CD-12: the breathing crosshair reticle is the capture control — tapping
-// inside the circle saves the current colour. TouchableOpacity only
-// completes a press when the finger stays put, so panning the camera never
-// captures by accident. Feedback is visual + haptic (scale dip + ring flash +
-// a brief "✓ saved" badge + success notification haptic).
-//
-// The circle must stay exactly screen-centred — the scan loop samples the
-// centre pixels — so the badge is absolutely positioned below it rather
-// than flowing in the layout.
-export default function CaptureReticle({
-  onCapture,
-  disabled = false,
-}: {
-  onCapture: () => void;
-  // e.g. during white-card calibration, when the circle frames the card
-  disabled?: boolean;
-}) {
-  const breathScale = useRef(new Animated.Value(1)).current;
-  const pressScale = useRef(new Animated.Value(1)).current;
-  const flashOpacity = useRef(new Animated.Value(0)).current;
-  const [showSaved, setShowSaved] = useState(false);
-  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // First-run cue (CD-28): shown until a few saves have been recorded,
-  // hidden during calibration (the overlay owns the circle then) and while
-  // the "✓ saved" badge occupies the same slot.
-  const showHint = useCaptureHint() && !disabled && !showSaved;
-
-  useEffect(() => {
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(breathScale, { toValue: 1.12, duration: 1000, useNativeDriver: true }),
-        Animated.timing(breathScale, { toValue: 1, duration: 1000, useNativeDriver: true }),
-      ])
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [breathScale]);
-
-  useEffect(
-    () => () => {
-      if (savedTimer.current) clearTimeout(savedTimer.current);
-    },
-    []
-  );
-
-  const handlePressIn = useCallback(() => {
-    Animated.timing(pressScale, { toValue: 0.9, duration: 80, useNativeDriver: true }).start();
-  }, [pressScale]);
-
-  const handlePressOut = useCallback(() => {
-    Animated.timing(pressScale, { toValue: 1, duration: 120, useNativeDriver: true }).start();
-  }, [pressScale]);
-
-  const handlePress = useCallback(() => {
-    if (disabled) return;
-    onCapture();
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    flashOpacity.setValue(1);
-    Animated.timing(flashOpacity, { toValue: 0, duration: 450, useNativeDriver: true }).start();
-    setShowSaved(true);
-    if (savedTimer.current) clearTimeout(savedTimer.current);
-    savedTimer.current = setTimeout(() => setShowSaved(false), 900);
-  }, [onCapture, flashOpacity, disabled]);
-
+// CD-40: the reticle is now a pure viewfinder — it frames the sampled region
+// but does not trigger a capture. The big shutter button (CaptureButton in
+// CameraScreen) owns that action. Tap-to-save from the circle is gone; the
+// capture hint (CD-28) moved to the drawer.
+export default function CaptureReticle({ disabled = false }: { disabled?: boolean }) {
   return (
-    <View style={styles.container} pointerEvents="box-none">
-      <Animated.View
-        style={{ transform: [{ scale: Animated.multiply(breathScale, pressScale) }] }}
-      >
-        <TouchableOpacity
-          style={styles.touchable}
-          activeOpacity={0.85}
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}
-          onPress={handlePress}
-          accessibilityRole="button"
-          accessibilityLabel="Capture colour"
-        >
-          <View style={styles.circle} />
-          <Animated.View style={[styles.flashRing, { opacity: flashOpacity }]} />
-          <View style={styles.crossHorizontal} />
-          <View style={styles.crossVertical} />
-        </TouchableOpacity>
-      </Animated.View>
-      <View style={[styles.savedBadge, { opacity: showSaved ? 1 : 0 }]} pointerEvents="none">
-        <Text style={styles.savedText}>✓ saved</Text>
+    <View style={styles.container} pointerEvents="none">
+      <View style={[styles.circle, disabled && styles.circleDisabled]}>
+        <View style={styles.crossHorizontal} />
+        <View style={styles.crossVertical} />
       </View>
-      {showHint && (
-        <View style={styles.hintBadge} pointerEvents="none">
-          <Text style={styles.hintText}>👆 Tap the circle to save this colour</Text>
-        </View>
-      )}
     </View>
   );
 }
@@ -112,65 +28,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  touchable: {
+  circle: {
     width: CROSSHAIR_SIZE,
     height: CROSSHAIR_SIZE,
+    borderRadius: CROSSHAIR_SIZE / 2,
+    borderWidth: 2.5,
+    borderColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
+    // Soft blue glow — shadow renders on native; a CSS box-shadow is added
+    // via inline style on web (see CameraScreen's reticleGlow wrapper).
+    shadowColor: '#4D6BFF',
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
   },
-  circle: {
-    position: 'absolute',
-    width: CROSSHAIR_SIZE,
-    height: CROSSHAIR_SIZE,
-    borderRadius: CROSSHAIR_SIZE / 2,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.8)',
-    backgroundColor: 'transparent',
-  },
-  flashRing: {
-    position: 'absolute',
-    width: CROSSHAIR_SIZE,
-    height: CROSSHAIR_SIZE,
-    borderRadius: CROSSHAIR_SIZE / 2,
-    borderWidth: 5,
-    borderColor: COLORS.accent,
+  circleDisabled: {
+    borderColor: 'rgba(255,255,255,0.4)',
+    shadowOpacity: 0,
   },
   crossHorizontal: {
     position: 'absolute',
     width: 20,
     height: 2,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     borderRadius: 1,
   },
   crossVertical: {
     position: 'absolute',
     width: 2,
     height: 20,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     borderRadius: 1,
   },
-  savedBadge: {
-    position: 'absolute',
-    top: '50%',
-    marginTop: CROSSHAIR_SIZE / 2 + 14,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: 14,
-  },
-  savedText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
-  // Same slot as the saved badge (kept exclusive via showHint) so the
-  // circle stays exactly screen-centred and clear of the bottom panel.
-  hintBadge: {
-    position: 'absolute',
-    top: '50%',
-    marginTop: CROSSHAIR_SIZE / 2 + 14,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-  },
-  hintText: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
 });
