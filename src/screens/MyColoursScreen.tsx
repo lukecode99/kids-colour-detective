@@ -1,10 +1,6 @@
-// Saved tab (CD-13, renamed CD-40): the Saved and Matches tabs merged into one
-// per-capture card list — thumbnail, editable room label, top-5 matches
-// and an expandable goes-with palette per card.
-// CD-19: the live scan renders on the Scan tab only — this screen shows
-// saved captures alone (buildMyColoursCards pins that down under test).
-// CD-20: every card carries its own filter chips (room-level preferences);
-// the global filters live on the Scan tab and only seed a capture at save.
+// CD-41: Saved tab rebuilt — compact 3-column grid + full-screen Polaroid detail view.
+// Every save auto-adds to Planner (shown unconditionally as "In Planner ✓" in detail).
+// Favourite boolean persisted on SavedColorEntry; heart turns purple when set.
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   StyleSheet,
@@ -14,13 +10,11 @@ import {
   SafeAreaView,
   Platform,
   ScrollView,
-  TextInput,
+  FlatList,
   Image,
+  Dimensions,
 } from 'react-native';
 
-import { useCurrentColour } from '../utils/currentColour';
-import { hexToRgb, rgbToLab } from '../utils/colorMath';
-import { matchPaintsLab } from '../utils/paintMatcher';
 import { PaintFilters, toggleFilter } from '../utils/filters';
 import {
   SavedColorEntry,
@@ -29,22 +23,42 @@ import {
   removeSavedColor,
   setSavedColorLabel,
   setSavedColorFilters,
+  setFavourite,
 } from '../utils/savedColors';
-import {
-  buildMyColoursCards,
-  isMyColoursEmpty,
-  captureFilters,
-  captureCandidates,
-} from '../utils/myColoursView';
-import { parseMatchLabel } from '../utils/matchLabel';
-import PaletteIdeas from '../components/PaletteIdeas';
-import {
-  MatchList,
-  FiltersPanel,
-  FilterToggleLine,
-  FilterEmptyNotice,
-} from '../components/paintMatchUI';
+import { matchPaintsLab, PaintMatch, PAINTS } from '../utils/paintMatcher';
+import { applyFilters } from '../utils/filters';
+import { hexToRgb, rgbToLab } from '../utils/colorMath';
 import { COLORS } from '../theme';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Column layout: 3 columns with 12px outer margin and 6px gutter between cols
+const GRID_PADDING = 12;
+const GRID_GAP = 6;
+const CARD_WIDTH = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * 2) / 3;
+
+// Brand pills shown in header and detail view (label → filter value)
+const BRAND_PILLS: { label: string; value: string | null }[] = [
+  { label: 'All', value: null },
+  { label: 'Dulux', value: 'Dulux' },
+  { label: 'F&B', value: 'Farrow & Ball' },
+  { label: 'Crown', value: 'Crown' },
+];
+
+// Type pills (label → finishes filter value)
+const TYPE_PILLS: { label: string; value: string | null }[] = [
+  { label: 'Any', value: null },
+  { label: 'Matt', value: 'matt' },
+  { label: 'Silk', value: 'silk' },
+  { label: 'Eggshell', value: 'eggshell' },
+  { label: 'Gloss', value: 'gloss' },
+];
+
+function formatSavedDate(ts: number): string {
+  return new Date(ts).toLocaleDateString(undefined, {
+    day: 'numeric', month: 'short', year: 'numeric',
+  });
+}
 
 // Loads the persisted saved-colours list and exposes mutators that keep
 // storage and state in sync.
@@ -70,147 +84,317 @@ export function useSavedColors() {
   const setFilters = useCallback((id: string, filters: PaintFilters) => {
     setSavedColorFilters(id, filters).then(setSavedColors);
   }, []);
+  const toggleFavourite = useCallback((id: string, current: boolean) => {
+    setFavourite(id, !current).then(setSavedColors);
+  }, []);
 
-  return { savedColors, save, remove, setLabel, setFilters };
+  return { savedColors, save, remove, setLabel, setFilters, toggleFavourite };
 }
 
-function formatTimestamp(ts: number): string {
-  const d = new Date(ts);
+// --- Grid card: thumbnail + swatch dot + name ---
+function GridCard({
+  sc,
+  onPress,
+}: {
+  sc: SavedColorEntry;
+  onPress: (sc: SavedColorEntry) => void;
+}) {
   return (
-    d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) +
-    ', ' +
-    d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    <TouchableOpacity
+      style={styles.gridCard}
+      onPress={() => onPress(sc)}
+      activeOpacity={0.8}
+    >
+      <View style={styles.gridThumbWrap}>
+        {sc.thumbnailUri ? (
+          <Image source={{ uri: sc.thumbnailUri }} style={styles.gridThumb} />
+        ) : (
+          <View style={[styles.gridThumb, { backgroundColor: sc.hex }]} />
+        )}
+        {/* Swatch dot bottom-left with white ring */}
+        <View style={[styles.gridDotRing, { bottom: 4, left: 4 }]}>
+          <View style={[styles.gridDot, { backgroundColor: sc.hex }]} />
+        </View>
+      </View>
+      <Text style={styles.gridName} numberOfLines={2}>{sc.name}</Text>
+    </TouchableOpacity>
   );
 }
 
-// One card per saved capture: thumbnail, editable room label, its own
-// filter chips (CD-20 — room-level preferences), top-5 matches and
-// goes-with recomputed against THIS card's filters only.
-function CaptureCard({
+// --- Full-screen Polaroid detail view ---
+function ColourDetail({
   sc,
+  onBack,
   onRemove,
-  onLabel,
-  onFilters,
+  onToggleFavourite,
+  filterBrand,
+  filterType,
+  onFilterBrand,
+  onFilterType,
 }: {
   sc: SavedColorEntry;
+  onBack: () => void;
   onRemove: (id: string) => void;
-  onLabel: (id: string, label: string) => void;
-  onFilters: (id: string, filters: PaintFilters) => void;
+  onToggleFavourite: (id: string, current: boolean) => void;
+  filterBrand: string | null;
+  filterType: string | null;
+  onFilterBrand: (v: string | null) => void;
+  onFilterType: (v: string | null) => void;
 }) {
-  const [label, setLabel] = useState(sc.label ?? '');
-  const [showIdeas, setShowIdeas] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
-  const commit = () => onLabel(sc.id, label);
-  // Pre-CD-14 entries froze the match as one string — recover the parts so
-  // the paint name gets its own full-width line on old cards too.
-  const best = sc.bestMatch ?? (sc.match ? parseMatchLabel(sc.match) : undefined);
-  const filters = captureFilters(sc);
-  const candidates = useMemo(() => captureCandidates(sc), [sc]);
-  // Matches recompute live against this capture's filters. Legacy hex-only
-  // entries are migrated at load, but derive here too so a card never
-  // renders without its matches.
+  const [showAll, setShowAll] = useState(false);
+
+  const filteredCandidates = useMemo(() => {
+    const filters: PaintFilters = {
+      brands: filterBrand ? [filterBrand] : [],
+      surfaces: [],
+      finishes: filterType ? [filterType] : [],
+    };
+    return applyFilters(PAINTS, filters);
+  }, [filterBrand, filterType]);
+
   const matches = useMemo(() => {
-    const lab = sc.lab ?? rgbToLab(...(sc.rgb ?? hexToRgb(sc.hex)));
-    return matchPaintsLab(lab, 5, candidates);
-  }, [sc, candidates]);
+    const lab = sc.lab ?? rgbToLab(...((sc.rgb ?? hexToRgb(sc.hex)) as [number, number, number]));
+    return matchPaintsLab(lab, 50, filteredCandidates);
+  }, [sc, filteredCandidates]);
+
+  const topMatch = matches[0] ?? null;
+  const displayedMatches = showAll ? matches : matches.slice(0, 5);
+
+  const finishLabel = topMatch?.paint.finishes[0]
+    ? topMatch.paint.finishes[0].charAt(0).toUpperCase() + topMatch.paint.finishes[0].slice(1)
+    : '';
+
+  const savedLine = [
+    `Saved ${formatSavedDate(sc.timestamp)}`,
+    sc.label,
+    'In Planner ✓',
+  ].filter(Boolean).join(' · ');
 
   return (
-    <View style={styles.card}>
-      <View style={styles.cardHead}>
-        {sc.thumbnailUri ? (
-          <Image source={{ uri: sc.thumbnailUri }} style={styles.thumb} />
-        ) : (
-          <View style={[styles.thumb, { backgroundColor: sc.hex }]} />
-        )}
-        <View style={[styles.swatchBar, { backgroundColor: sc.hex }]} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.cardTitle}>
-            {sc.emoji} {sc.name}
-          </Text>
-          {best && (
-            <Text style={styles.cardMeta}>
-              best: {best.name} · {best.brand} · {best.pct}%
-            </Text>
-          )}
-          <Text style={styles.cardMeta}>
-            {sc.hex} · {formatTimestamp(sc.timestamp)}
-          </Text>
-          <TextInput
-            style={styles.labelInput}
-            placeholder="Add room label…"
-            placeholderTextColor="rgba(255,255,255,0.3)"
-            value={label}
-            onChangeText={setLabel}
-            onBlur={commit}
-            onSubmitEditing={commit}
-            returnKeyType="done"
-          />
-        </View>
+    <ScrollView style={styles.detailScroll} contentContainerStyle={{ paddingBottom: 40 }}>
+      {/* Back button */}
+      <SafeAreaView>
         <TouchableOpacity
-          onPress={() => onRemove(sc.id)}
-          style={styles.deleteBtn}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={styles.backBtn}
+          onPress={onBack}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Text style={{ color: COLORS.textMuted, fontSize: 16 }}>✕</Text>
+          <Text style={styles.backText}>← Saved</Text>
         </TouchableOpacity>
-      </View>
-      <FilterToggleLine
-        filters={filters}
-        candidateCount={candidates.length}
-        expanded={showFilters}
-        onPress={() => setShowFilters(s => !s)}
-      />
-      {showFilters && (
-        <FiltersPanel
-          filters={filters}
-          onToggle={(group, value) => onFilters(sc.id, toggleFilter(filters, group, value))}
-        />
-      )}
-      {candidates.length === 0 ? <FilterEmptyNotice /> : <MatchList matches={matches} />}
-      <TouchableOpacity onPress={() => setShowIdeas(v => !v)} hitSlop={{ top: 6, bottom: 6 }}>
-        <Text style={styles.ideasToggle}>{showIdeas ? '▾' : '▸'} 🎨 Goes-with paints</Text>
-      </TouchableOpacity>
-      {showIdeas && (
-        <View style={styles.ideasWrap}>
-          <PaletteIdeas hex={sc.hex} candidates={candidates} />
+      </SafeAreaView>
+
+      {/* Polaroid card */}
+      <View style={styles.polaroidCard}>
+        {/* Photo */}
+        <View style={styles.polaroidPhotoWrap}>
+          {sc.thumbnailUri ? (
+            <Image source={{ uri: sc.thumbnailUri }} style={styles.polaroidPhoto} resizeMode="cover" />
+          ) : (
+            <View style={[styles.polaroidPhoto, { backgroundColor: sc.hex }]} />
+          )}
         </View>
-      )}
+
+        {/* Bottom info strip */}
+        <View style={styles.polaroidStrip}>
+          <View style={[styles.stripSwatch, { backgroundColor: sc.hex }]} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.stripName} numberOfLines={1}>
+              {topMatch ? topMatch.paint.name : sc.name}
+            </Text>
+            <Text style={styles.stripBrand} numberOfLines={1}>
+              {topMatch
+                ? `${topMatch.paint.brand} · ${sc.hex}${finishLabel ? ` · ${finishLabel}` : ''}`
+                : sc.hex}
+            </Text>
+            <Text style={styles.stripMeta} numberOfLines={1}>{savedLine}</Text>
+          </View>
+          <View style={styles.stripActions}>
+            <TouchableOpacity
+              onPress={() => onToggleFavourite(sc.id, !!sc.favourite)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={[styles.actionIcon, sc.favourite && styles.actionIconActive]}>♥</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => onRemove(sc.id)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.actionIcon}>🗑</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
+      {/* Matching colours section */}
+      <View style={styles.matchSection}>
+        <Text style={styles.matchSectionTitle}>MATCHING COLOURS</Text>
+
+        {/* Brand pills */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillRow} contentContainerStyle={{ paddingHorizontal: 16, gap: 6 }}>
+          {BRAND_PILLS.map(p => (
+            <TouchableOpacity
+              key={p.label}
+              style={[styles.filterPill, filterBrand === p.value && styles.filterPillActive]}
+              onPress={() => onFilterBrand(p.value)}
+            >
+              <Text style={[styles.filterPillText, filterBrand === p.value && styles.filterPillTextActive]}>
+                {p.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* Type pills */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillRow} contentContainerStyle={{ paddingHorizontal: 16, gap: 6 }}>
+          {TYPE_PILLS.map(p => (
+            <TouchableOpacity
+              key={p.label}
+              style={[styles.filterPill, filterType === p.value && styles.filterPillActive]}
+              onPress={() => onFilterType(p.value)}
+            >
+              <Text style={[styles.filterPillText, filterType === p.value && styles.filterPillTextActive]}>
+                {p.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* Match rows */}
+        {displayedMatches.length === 0 ? (
+          <Text style={styles.matchEmpty}>No paints match those filters.</Text>
+        ) : (
+          displayedMatches.map((m, i) => (
+            <MatchRow key={`${m.paint.brand}-${m.paint.name}-${i}`} match={m} />
+          ))
+        )}
+
+        {/* Show all / less toggle */}
+        {matches.length > 5 && (
+          <TouchableOpacity
+            style={styles.showAllBtn}
+            onPress={() => setShowAll(v => !v)}
+          >
+            <Text style={styles.showAllText}>
+              {showAll ? 'Show fewer' : `Show all ${matches.length}`}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </ScrollView>
+  );
+}
+
+function MatchRow({ match }: { match: PaintMatch }) {
+  const finishTag = match.paint.finishes[0] ?? '';
+  return (
+    <View style={styles.matchRow}>
+      <View style={[styles.matchSwatch, { backgroundColor: match.paint.hex }]} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.matchName} numberOfLines={1}>{match.paint.name}</Text>
+        <Text style={styles.matchBrand} numberOfLines={1}>
+          {match.paint.brand}{finishTag ? ` · ${finishTag.charAt(0).toUpperCase()}${finishTag.slice(1)}` : ''}
+        </Text>
+      </View>
+      <Text style={styles.matchScore}>
+        {match.matchPercent}% · ΔE {match.deltaE.toFixed(1)}
+      </Text>
     </View>
   );
 }
 
 export default function MyColoursScreen() {
-  const { savedColors, remove, setLabel, setFilters } = useSavedColors();
-  // Deliberately fed through the CD-19 helpers, which ignore it: a live
-  // scan must not add a card here nor suppress the empty state.
-  const current = useCurrentColour();
+  const { savedColors, remove, toggleFavourite } = useSavedColors();
+  const [selected, setSelected] = useState<SavedColorEntry | null>(null);
+  const [filterBrand, setFilterBrand] = useState<string | null>(null);
+  const [filterType, setFilterType] = useState<string | null>(null);
 
-  const cards = buildMyColoursCards(current, savedColors);
-  const empty = isMyColoursEmpty(current, savedColors);
+  // Keep selected entry in sync when savedColors updates (e.g. after favourite toggle)
+  useEffect(() => {
+    if (selected) {
+      const updated = savedColors.find(sc => sc.id === selected.id);
+      if (updated) setSelected(updated);
+      else setSelected(null); // was deleted
+    }
+  }, [savedColors]);
+
+  const handleRemove = useCallback((id: string) => {
+    remove(id);
+    setSelected(null);
+  }, [remove]);
+
+  if (selected) {
+    return (
+      <View style={styles.container}>
+        <ColourDetail
+          sc={selected}
+          onBack={() => setSelected(null)}
+          onRemove={handleRemove}
+          onToggleFavourite={toggleFavourite}
+          filterBrand={filterBrand}
+          filterType={filterType}
+          onFilterBrand={setFilterBrand}
+          onFilterType={setFilterType}
+        />
+      </View>
+    );
+  }
+
+  const total = savedColors.length;
 
   return (
     <View style={styles.container}>
       <SafeAreaView style={{ flex: 1, paddingTop: Platform.OS === 'web' ? 48 : 0 }}>
+        {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Saved</Text>
+          <Text style={styles.headerTitle}>Saved · {total} colour{total !== 1 ? 's' : ''}</Text>
         </View>
-        {empty ? (
+
+        {/* Brand pills */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillRow} contentContainerStyle={{ paddingHorizontal: 16, gap: 6 }}>
+          {BRAND_PILLS.map(p => (
+            <TouchableOpacity
+              key={p.label}
+              style={[styles.filterPill, filterBrand === p.value && styles.filterPillActive]}
+              onPress={() => setFilterBrand(p.value)}
+            >
+              <Text style={[styles.filterPillText, filterBrand === p.value && styles.filterPillTextActive]}>
+                {p.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* Type pills */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.pillRow, { marginBottom: 8 }]} contentContainerStyle={{ paddingHorizontal: 16, gap: 6 }}>
+          {TYPE_PILLS.map(p => (
+            <TouchableOpacity
+              key={p.label}
+              style={[styles.filterPill, filterType === p.value && styles.filterPillActive]}
+              onPress={() => setFilterType(p.value)}
+            >
+              <Text style={[styles.filterPillText, filterType === p.value && styles.filterPillTextActive]}>
+                {p.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* Grid */}
+        {total === 0 ? (
           <Text style={styles.empty}>
-            Nothing here yet.{'\n\n'}Point the camera at a wall in the Scan tab — or pick a spot
-            on a photo — and every capture shows up here as a card.
+            Nothing saved yet.{'\n\n'}Point the camera at a wall in the Scan tab — or pick a spot on a photo — and saves appear here.
           </Text>
         ) : (
-          <ScrollView keyboardShouldPersistTaps="handled">
-            {cards.map(({ entry: sc }) => (
-              <CaptureCard
-                key={sc.id}
-                sc={sc}
-                onRemove={remove}
-                onLabel={setLabel}
-                onFilters={setFilters}
-              />
-            ))}
-          </ScrollView>
+          <FlatList
+            data={savedColors}
+            keyExtractor={item => item.id}
+            numColumns={3}
+            contentContainerStyle={{ paddingHorizontal: GRID_PADDING, paddingBottom: 20 }}
+            columnWrapperStyle={{ gap: GRID_GAP, marginBottom: GRID_GAP }}
+            renderItem={({ item }) => (
+              <GridCard sc={item} onPress={setSelected} />
+            )}
+          />
         )}
       </SafeAreaView>
     </View>
@@ -219,38 +403,124 @@ export default function MyColoursScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
+
   header: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 20, paddingTop: 16, marginBottom: 10,
+    paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8,
   },
   headerTitle: { color: COLORS.text, fontSize: 22, fontWeight: '800' },
-  empty: {
-    color: COLORS.textMuted, textAlign: 'center', marginTop: 40, fontSize: 16,
-    paddingHorizontal: 32, lineHeight: 23,
-  },
-  card: {
-    marginHorizontal: 12, marginBottom: 12,
-    paddingHorizontal: 8, paddingVertical: 10,
+
+  pillRow: { flexShrink: 0, marginBottom: 4 },
+  filterPill: {
+    paddingHorizontal: 12, paddingVertical: 6,
     borderRadius: 14, backgroundColor: COLORS.surface,
     borderWidth: 1, borderColor: COLORS.border,
   },
-  cardHead: {
+  filterPillActive: { backgroundColor: COLORS.purple, borderColor: COLORS.purple },
+  filterPillText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
+  filterPillTextActive: { color: '#fff' },
+
+  empty: {
+    color: COLORS.textMuted, textAlign: 'center',
+    marginTop: 40, fontSize: 16,
+    paddingHorizontal: 32, lineHeight: 23,
+  },
+
+  // --- Grid card ---
+  gridCard: { width: CARD_WIDTH },
+  gridThumbWrap: {
+    width: CARD_WIDTH,
+    height: CARD_WIDTH,
+    borderRadius: 16,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: COLORS.surface,
+  },
+  gridThumb: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 16,
+  },
+  gridDotRing: {
+    position: 'absolute',
+    width: 18, height: 18,
+    borderRadius: 9,
+    borderWidth: 2, borderColor: '#fff',
+    overflow: 'hidden',
+  },
+  gridDot: {
+    flex: 1,
+  },
+  gridName: {
+    color: COLORS.text,
+    fontSize: 11, fontWeight: '600',
+    marginTop: 4, lineHeight: 14,
+  },
+
+  // --- Detail (Polaroid) ---
+  detailScroll: { flex: 1 },
+  backBtn: { paddingHorizontal: 16, paddingVertical: 14 },
+  backText: { color: COLORS.purple, fontSize: 15, fontWeight: '700' },
+
+  polaroidCard: {
+    marginHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: COLORS.card,
+    overflow: 'hidden',
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  polaroidPhotoWrap: {
+    width: '100%',
+    aspectRatio: 1,
+  },
+  polaroidPhoto: {
+    width: '100%',
+    height: '100%',
+  },
+  polaroidStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 10,
+    borderTopWidth: 2, borderTopColor: COLORS.border,
+  },
+  stripSwatch: {
+    width: 28, height: 28, borderRadius: 6,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)',
+    flexShrink: 0,
+  },
+  stripName: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
+  stripBrand: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
+  stripMeta: { color: COLORS.textMuted, fontSize: 10, marginTop: 2 },
+  stripActions: { flexDirection: 'row', gap: 12, flexShrink: 0 },
+  actionIcon: { color: COLORS.textMuted, fontSize: 18 },
+  actionIconActive: { color: COLORS.purple },
+
+  // --- Matching colours section ---
+  matchSection: { marginTop: 20, paddingHorizontal: 0 },
+  matchSectionTitle: {
+    color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5,
+    paddingHorizontal: 16, marginBottom: 8,
+  },
+  matchEmpty: {
+    color: COLORS.textMuted, fontSize: 13, paddingHorizontal: 16, marginTop: 8,
+  },
+  matchRow: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 12, marginBottom: 8,
+    paddingHorizontal: 16, paddingVertical: 8,
+    gap: 10,
   },
-  thumb: { width: 56, height: 56, borderRadius: 10 },
-  swatchBar: { width: 6, height: 56, borderRadius: 3, marginLeft: 6, marginRight: 12 },
-  cardTitle: { color: COLORS.text, fontSize: 17, fontWeight: '700' },
-  cardMeta: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
-  labelInput: {
-    color: COLORS.text, fontSize: 13, marginTop: 4,
-    paddingVertical: 2, paddingHorizontal: 0,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border,
+  matchSwatch: {
+    width: 24, height: 24, borderRadius: 6,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    flexShrink: 0,
   },
-  deleteBtn: { paddingLeft: 12, paddingVertical: 8 },
-  ideasToggle: {
-    color: COLORS.accent, fontSize: 13, fontWeight: '700',
-    paddingHorizontal: 12, marginTop: 8,
+  matchName: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  matchBrand: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
+  matchScore: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', flexShrink: 0 },
+  showAllBtn: {
+    marginHorizontal: 16, marginTop: 8,
+    paddingVertical: 10, alignItems: 'center',
+    borderRadius: 10, borderWidth: 1, borderColor: COLORS.border,
   },
-  ideasWrap: { paddingHorizontal: 12 },
+  showAllText: { color: COLORS.purple, fontSize: 13, fontWeight: '700' },
 });

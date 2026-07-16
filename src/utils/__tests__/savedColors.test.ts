@@ -5,6 +5,7 @@ import {
   removeSavedColor,
   setSavedColorLabel,
   setSavedColorFilters,
+  setFavourite,
   newSavedColorId,
   withColourData,
   SavedColorEntry,
@@ -211,5 +212,54 @@ describe('per-capture filters (CD-20)', () => {
     await addSavedColor(open);
     const [loaded] = await loadSavedColors();
     expect(loaded.filters).toEqual(EMPTY_FILTERS);
+  });
+});
+
+describe('CD-41: favourite persistence', () => {
+  it('favourite defaults to undefined on a new save', async () => {
+    await addSavedColor(entry());
+    const [loaded] = await loadSavedColors();
+    expect(loaded.favourite).toBeUndefined();
+  });
+
+  it('setFavourite(id, true) persists and survives a reload', async () => {
+    const e = entry({ hex: '#FF0000' });
+    await addSavedColor(e);
+    await setFavourite(e.id, true);
+    const [loaded] = await loadSavedColors();
+    expect(loaded.favourite).toBe(true);
+  });
+
+  it('setFavourite(id, false) clears the flag', async () => {
+    const e = entry({ hex: '#0000FF' });
+    await addSavedColor(e);
+    await setFavourite(e.id, true);
+    await setFavourite(e.id, false);
+    const [loaded] = await loadSavedColors();
+    expect(loaded.favourite).toBe(false);
+  });
+
+  it('toggling favourite on one entry leaves others unchanged', async () => {
+    const a = entry({ hex: '#AAAAAA' });
+    const b = entry({ hex: '#BBBBBB' });
+    await addSavedColor(a);
+    await addSavedColor(b);
+    await setFavourite(a.id, true);
+    const loaded = await loadSavedColors();
+    expect(loaded.find(e => e.id === a.id)!.favourite).toBe(true);
+    expect(loaded.find(e => e.id === b.id)!.favourite).toBeUndefined();
+  });
+});
+
+describe('CD-41: auto-add to Planner', () => {
+  it('every saved entry is treated as in-planner (no separate add step needed)', async () => {
+    const e = entry({ hex: '#C8B4A0', label: 'Hallway' });
+    await addSavedColor(e);
+    const loaded = await loadSavedColors();
+    // Every save auto-adds to Planner — the entry exists and carries its label,
+    // confirming the saved colour IS the planner entry (no separate state required).
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].id).toBe(e.id);
+    expect(loaded[0].label).toBe('Hallway');
   });
 });

@@ -18,6 +18,7 @@ export interface SavedColorEntry {
   label?: string; // optional room label, e.g. "Kitchen"
   thumbnailUri?: string; // FileSystem file on native, data URL on web
   filters?: PaintFilters; // per-capture filter set (CD-20) — room-level preferences
+  favourite?: boolean; // CD-41: heart-marked by user
 }
 
 // CD-13: entries persisted before rgb/lab existed carry only hex. Both are
@@ -145,6 +146,13 @@ export async function setSavedColorFilters(
 ): Promise<SavedColorEntry[]> {
   const current = await loadSavedColors();
   const next = current.map(e => (e.id === id ? { ...e, filters } : e));
+  await persist(next);
+  return next;
+}
+
+export async function setFavourite(id: string, fav: boolean): Promise<SavedColorEntry[]> {
+  const current = await loadSavedColors();
+  const next = current.map(e => (e.id === id ? { ...e, favourite: fav } : e));
   await persist(next);
   return next;
 }

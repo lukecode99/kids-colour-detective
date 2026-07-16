@@ -71,13 +71,13 @@ const SCAN_INTERVAL_MS = 1500;
 const SCAN_FPS = 5;
 const SAMPLE_N = 9;
 
-// CD-40 drawer constants
+// CD-40/CD-41 drawer constants
 const TAB_BAR_HEIGHT = 76;
-const PEEK_HEIGHT = 168; // visible peek drawer above tab bar
+const PEEK_HEIGHT = 64; // CD-41: 64px docked result bar flush to tab bar
 const EXPANDED_HEIGHT = Math.min(SCREEN_HEIGHT * 0.68, 480);
 const DRAWER_TRANSLATE_COLLAPSED = EXPANDED_HEIGHT - PEEK_HEIGHT;
 const BUTTON_SIZE = 88;
-const BUTTON_INNER = 72;
+const BUTTON_DISC = 66; // CD-41: white inner disc diameter
 
 type WhiteRefMode = 'off' | 'choosing' | 'calibrating' | 'locked';
 
@@ -202,16 +202,13 @@ function CalibrationOverlay({
   );
 }
 
-// CD-40: the big shutter button floating over the drawer edge.
-// White outer ring + blue glow, inner circle filled with the live detected colour,
-// camera icon in white.
+// CD-41: plain white ring shutter — 88px ring (5px white border), 66px white inner disc,
+// blue glow. No live-colour fill, no glyph.
 function CaptureButton({
   onCapture,
-  colorHex,
   disabled,
 }: {
   onCapture: () => void;
-  colorHex: string;
   disabled: boolean;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
@@ -234,7 +231,7 @@ function CaptureButton({
   return (
     <Animated.View style={[styles.captureBtn, { transform: [{ scale }], opacity: disabled ? 0.45 : 1 }]}>
       <TouchableOpacity
-        style={styles.captureBtnInner}
+        style={styles.captureBtnTouch}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         onPress={handlePress}
@@ -243,32 +240,20 @@ function CaptureButton({
         accessibilityLabel="Capture colour"
         activeOpacity={1}
       >
-        <View style={[styles.captureBtnColor, { backgroundColor: colorHex }]}>
-          {/* Camera SVG icon — inline on web, emoji on native */}
-          {Platform.OS === 'web'
-            ? (React.createElement as any)('svg',
-                { width: 30, height: 30, viewBox: '0 0 24 24', fill: 'none', stroke: '#fff', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
-                (React.createElement as any)('path', { d: 'M4 8h3l2-3h6l2 3h3a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z' }),
-                (React.createElement as any)('circle', { cx: 12, cy: 13.5, r: 3.6 }),
-              )
-            : <Text style={{ fontSize: 24 }}>📷</Text>
-          }
-        </View>
+        <View style={styles.captureBtnDisc} />
       </TouchableOpacity>
     </Animated.View>
   );
 }
 
-// CD-40: swipe-up drawer shared between web and native camera screens.
-// Peek state: handle + swatch + name + match summary + stats row.
-// Expanded state: calibration pill + filter controls + footer hint.
+// CD-41: swipe-up drawer — collapsed = 64px docked result bar flush to tab bar.
+// Expanded = full overlay with calibration pill, filter controls, footer hint.
 function ScanDrawer({
   colorInfo,
   matches,
   rawRgb,
   whiteRefMode,
   calibSurface,
-  savedCount,
   filters,
   candidates,
   showFilters,
@@ -281,7 +266,6 @@ function ScanDrawer({
   rawRgb: Rgb;
   whiteRefMode: WhiteRefMode;
   calibSurface: CalibrationSurface | null;
-  savedCount: number;
   filters: ReturnType<typeof useScanFilters>['filters'];
   candidates: ReturnType<typeof useScanFilters>['candidates'];
   showFilters: boolean;
@@ -291,14 +275,17 @@ function ScanDrawer({
 }) {
   const translateY = useRef(new Animated.Value(DRAWER_TRANSLATE_COLLAPSED)).current;
   const expandedRef = useRef(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const expand = useCallback(() => {
     expandedRef.current = true;
+    setIsExpanded(true);
     Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
   }, [translateY]);
 
   const collapse = useCallback(() => {
     expandedRef.current = false;
+    setIsExpanded(false);
     Animated.spring(translateY, { toValue: DRAWER_TRANSLATE_COLLAPSED, useNativeDriver: true, bounciness: 0 }).start();
   }, [translateY]);
 
@@ -314,11 +301,6 @@ function ScanDrawer({
   ).current;
 
   const top1Match = matches[0];
-  const deltaE = top1Match ? top1Match.deltaE.toFixed(1) : null;
-  const matchLine = top1Match
-    ? `Dulux match · ${top1Match.paint.name} · ΔE ${deltaE}`
-    : colorInfo.hex;
-
   const hint = lightingHint(rawRgb);
 
   return (
@@ -326,42 +308,24 @@ function ScanDrawer({
       style={[styles.drawer, { transform: [{ translateY }] }]}
       {...panResponder.panHandlers}
     >
-      {/* Drag handle */}
-      <View style={styles.drawerHandle} />
-
-      {/* Peek content */}
-      <View style={styles.drawerPeek}>
-        <View style={[styles.peekSwatch, { backgroundColor: colorInfo.hex }]} />
+      {/* 64px docked result bar — always the first visible section */}
+      <View style={styles.resultBar}>
+        <View style={[styles.resultSwatch, { backgroundColor: colorInfo.hex }]} />
         <View style={{ flex: 1 }}>
-          <Text style={styles.peekName} numberOfLines={1}>
-            {colorInfo.emoji} {top1Match ? top1Match.paint.name : colorInfo.name}
+          <Text style={styles.resultName} numberOfLines={1}>
+            {top1Match ? top1Match.paint.name : colorInfo.name}
           </Text>
-          <Text style={styles.peekMatch} numberOfLines={1}>{matchLine}</Text>
+          <Text style={styles.resultSub} numberOfLines={1}>
+            {top1Match ? `${top1Match.paint.brand} · ${colorInfo.hex}` : colorInfo.hex}
+          </Text>
         </View>
-        <TouchableOpacity onPress={expandedRef.current ? collapse : expand} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Text style={styles.peekSwipe}>swipe up ↑</Text>
+        <TouchableOpacity onPress={isExpanded ? collapse : expand} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <Text style={styles.resultChevron}>{isExpanded ? '⌄' : '⌃'}</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Stats row */}
-      <View style={styles.statsRow}>
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>CODE</Text>
-          <Text style={[styles.statValue, styles.statBlue]}>{colorInfo.hex}</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>WHITE REF</Text>
-          <Text style={styles.statValue}>{whiteRefMode === 'locked' ? 'Set ✓' : 'None'}</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>SAVED</Text>
-          <Text style={[styles.statValue, styles.statPurple]}>
-            {savedCount} colour{savedCount !== 1 ? 's' : ''}
-          </Text>
-        </View>
-      </View>
+      {/* Drag handle — visible only in expanded state (sits below the result bar) */}
+      <View style={styles.drawerHandle} />
 
       {/* Expanded content (calibration pill, lighting hint, filters, footer) */}
       <View style={styles.drawerExpanded}>
@@ -616,7 +580,6 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       <View style={styles.captureBtnArea} pointerEvents="box-none">
         <CaptureButton
           onCapture={saveColor}
-          colorHex={colorInfo.hex}
           disabled={calibrating}
         />
       </View>
@@ -628,7 +591,6 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         rawRgb={rawRgb}
         whiteRefMode={whiteRefMode}
         calibSurface={calibSurface}
-        savedCount={savedCount}
         filters={filters}
         candidates={candidates}
         showFilters={showFilters}
@@ -883,7 +845,6 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       <View style={styles.captureBtnArea} pointerEvents="box-none">
         <CaptureButton
           onCapture={saveColor}
-          colorHex={colorInfo.hex}
           disabled={calibrating}
         />
       </View>
@@ -895,7 +856,6 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         rawRgb={rawRgb}
         whiteRefMode={whiteRefMode}
         calibSurface={calibSurface}
-        savedCount={savedCount}
         filters={filters}
         candidates={candidates}
         showFilters={showFilters}
@@ -947,7 +907,7 @@ const styles = StyleSheet.create({
     borderRadius: 14, overflow: 'hidden',
   },
 
-  // --- Capture button (floating over drawer edge) ---
+  // --- Capture button (CD-41: white ring + white disc, blue glow) ---
   captureBtnArea: {
     position: 'absolute',
     left: 0, right: 0,
@@ -959,29 +919,29 @@ const styles = StyleSheet.create({
     width: BUTTON_SIZE,
     height: BUTTON_SIZE,
     borderRadius: BUTTON_SIZE / 2,
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent',
+    borderWidth: 5,
+    borderColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
-    // Blue glow ring
     shadowColor: '#4D6BFF',
-    shadowOpacity: 0.55,
-    shadowRadius: 10,
+    shadowOpacity: 0.65,
+    shadowRadius: 14,
     shadowOffset: { width: 0, height: 0 },
-    elevation: 12,
+    elevation: 14,
   },
-  captureBtnInner: {
+  captureBtnTouch: {
     width: BUTTON_SIZE,
     height: BUTTON_SIZE,
     borderRadius: BUTTON_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  captureBtnColor: {
-    width: BUTTON_INNER,
-    height: BUTTON_INNER,
-    borderRadius: BUTTON_INNER / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
+  captureBtnDisc: {
+    width: BUTTON_DISC,
+    height: BUTTON_DISC,
+    borderRadius: BUTTON_DISC / 2,
+    backgroundColor: '#fff',
   },
 
   // --- Swipe-up drawer ---
@@ -994,47 +954,34 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
 
-  // The drawer's visual background is inside (so the capture button overlaps it cleanly)
+  // CD-41: 64px docked result bar (replaces peek + stats row)
+  resultBar: {
+    height: PEEK_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 12,
+    backgroundColor: '#0A0E1A',
+    borderTopWidth: 1,
+    borderTopColor: '#232C4A',
+  },
+  resultSwatch: {
+    width: 32, height: 32, borderRadius: 8,
+    borderWidth: 1.5, borderColor: COLORS.border,
+  },
+  resultName: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
+  resultSub: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
+  resultChevron: { color: COLORS.purple, fontSize: 20, fontWeight: '800' },
+
+  // Drag handle — sits below result bar, visible only when expanded
   drawerHandle: {
     width: 44, height: 5, borderRadius: 3,
     backgroundColor: COLORS.blue,
     opacity: 0.55,
     alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 16,
+    marginTop: 10,
+    marginBottom: 10,
   },
-
-  drawerPeek: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 22,
-    gap: 13,
-    backgroundColor: 'rgba(20,26,46,0.96)',
-  },
-
-  peekSwatch: {
-    width: 48, height: 48, borderRadius: 14,
-    borderWidth: 2, borderColor: COLORS.border,
-  },
-
-  peekName: { color: COLORS.text, fontSize: 23, fontWeight: '800', letterSpacing: -0.4 },
-  peekMatch: { color: COLORS.textMuted, fontSize: 11.5, fontWeight: '600', marginTop: 2 },
-  peekSwipe: { color: COLORS.purple, fontSize: 12, fontWeight: '700', flexShrink: 0 },
-
-  statsRow: {
-    flexDirection: 'row',
-    borderTopWidth: 1, borderTopColor: COLORS.border,
-    marginTop: 14,
-    paddingTop: 12,
-    paddingBottom: 14,
-    backgroundColor: 'rgba(20,26,46,0.96)',
-  },
-  statCell: { flex: 1, alignItems: 'center' },
-  statDivider: { width: 1, backgroundColor: COLORS.border },
-  statLabel: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', letterSpacing: 0.3 },
-  statValue: { color: COLORS.text, fontSize: 14, fontWeight: '700', marginTop: 3 },
-  statBlue: { color: COLORS.blue },
-  statPurple: { color: COLORS.purple },
 
   drawerExpanded: {
     flex: 1,
