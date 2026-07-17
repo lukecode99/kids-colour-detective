@@ -9,7 +9,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "uk.co.colourdetective.app",
-      "buildNumber": "9",
+      "buildNumber": "10",
       "infoPlist": {
         "NSCameraUsageDescription": "Point the camera at a wall or surface to find the closest matching paint colour.",
         "NSPhotoLibraryUsageDescription": "Choose a photo to find the closest matching paint colours in it. Photos are analysed on your device only.",

@@ -202,6 +202,46 @@ function CalibrationOverlay({
   );
 }
 
+// CD-43: top calibration bar — amber when uncalibrated, slim green when locked.
+// Hidden during the choosing/calibrating flow (overlay covers the screen).
+function CalibrationTopBar({
+  whiteRefMode,
+  onCalibratePress,
+  onRedoPress,
+}: {
+  whiteRefMode: WhiteRefMode;
+  onCalibratePress: () => void;
+  onRedoPress: () => void;
+}) {
+  if (whiteRefMode === 'choosing' || whiteRefMode === 'calibrating') return null;
+
+  if (whiteRefMode === 'locked') {
+    return (
+      <View style={styles.calibTopBarGreen}>
+        <Text style={styles.calibTopBarTickIcon}>✓</Text>
+        <Text style={styles.calibTopBarTextGreen}>Calibrated for this light</Text>
+        <TouchableOpacity
+          style={styles.calibRedoChip}
+          onPress={onRedoPress}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Text style={styles.calibRedoChipText}>Redo</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <TouchableOpacity style={styles.calibTopBarAmber} onPress={onCalibratePress} activeOpacity={0.85}>
+      <Text style={styles.calibTopBarWarnIcon}>⚠</Text>
+      <Text style={styles.calibTopBarTextAmber}>Calibrate colour & lighting</Text>
+      <View style={styles.calibrateChip}>
+        <Text style={styles.calibrateChipText}>Calibrate ›</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 // CD-41: plain white ring shutter — 88px ring (5px white border), 66px white inner disc,
 // blue glow. No live-colour fill, no glyph.
 function CaptureButton({
@@ -479,6 +519,12 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
     }
   }, []);
 
+  const handleRedo = useCallback(() => {
+    whiteRefValueRef.current = null;
+    setCalibSurface(null);
+    setWhiteRefMode('choosing');
+  }, []);
+
   const chooseSurface = useCallback((surface: CalibrationSurface) => {
     setCalibSurface(surface);
     recordSurfaceChoice(surface);
@@ -550,17 +596,24 @@ function WebCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       {/* Viewfinder reticle */}
       <CaptureReticle disabled={calibrating} />
 
-      {/* Torch icon button — top right */}
-      {torchSupported && (
-        <SafeAreaView style={styles.torchArea} pointerEvents="box-none">
-          <TouchableOpacity
-            style={[styles.torchBtn, torchOn && styles.torchBtnOn]}
-            onPress={toggleTorch}
-          >
-            <Text style={{ fontSize: 20 }}>🔦</Text>
-          </TouchableOpacity>
-        </SafeAreaView>
-      )}
+      {/* Top controls: calibration bar + torch button, stacked below status bar */}
+      <SafeAreaView style={styles.topControls} pointerEvents="box-none">
+        <CalibrationTopBar
+          whiteRefMode={whiteRefMode}
+          onCalibratePress={handleWhiteRefPress}
+          onRedoPress={handleRedo}
+        />
+        {torchSupported && (
+          <View style={styles.torchRow} pointerEvents="box-none">
+            <TouchableOpacity
+              style={[styles.torchBtn, torchOn && styles.torchBtnOn]}
+              onPress={toggleTorch}
+            >
+              <Text style={{ fontSize: 20 }}>🔦</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </SafeAreaView>
 
       {/* Calibration overlays */}
       {whiteRefMode === 'choosing' && (
@@ -719,6 +772,12 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
     }
   }, []);
 
+  const handleRedo = useCallback(() => {
+    whiteRefValueRef.current = null;
+    setCalibSurface(null);
+    setWhiteRefMode('choosing');
+  }, []);
+
   const chooseSurface = useCallback((surface: CalibrationSurface) => {
     setCalibSurface(surface);
     recordSurfaceChoice(surface);
@@ -817,14 +876,21 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         </View>
       )}
 
-      {/* Torch icon button — top right */}
-      <SafeAreaView style={styles.torchArea} pointerEvents="box-none">
-        <TouchableOpacity
-          style={[styles.torchBtn, torchOn && styles.torchBtnOn]}
-          onPress={() => setTorchOn(t => !t)}
-        >
-          <Text style={{ fontSize: 20 }}>🔦</Text>
-        </TouchableOpacity>
+      {/* Top controls: calibration bar + torch button, stacked below status bar */}
+      <SafeAreaView style={styles.topControls} pointerEvents="box-none">
+        <CalibrationTopBar
+          whiteRefMode={whiteRefMode}
+          onCalibratePress={handleWhiteRefPress}
+          onRedoPress={handleRedo}
+        />
+        <View style={styles.torchRow} pointerEvents="box-none">
+          <TouchableOpacity
+            style={[styles.torchBtn, torchOn && styles.torchBtnOn]}
+            onPress={() => setTorchOn(t => !t)}
+          >
+            <Text style={{ fontSize: 20 }}>🔦</Text>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
 
       {/* Calibration overlays */}
@@ -878,19 +944,66 @@ const styles = StyleSheet.create({
   permButton: { backgroundColor: COLORS.blue, paddingHorizontal: 32, paddingVertical: 14, borderRadius: 30 },
   permButtonText: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
 
-  // --- Torch button (top-right icon button) ---
-  torchArea: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
+  // --- Top controls: calibration bar + torch (CD-43) ---
+  topControls: {
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 24,
+  },
+  torchRow: {
     alignItems: 'flex-end',
+    paddingRight: 16,
+    paddingTop: 8,
   },
   torchBtn: {
     width: 46, height: 46, borderRadius: 23,
     backgroundColor: 'rgba(10,14,26,0.55)',
     borderWidth: 1, borderColor: 'rgba(77,107,255,0.35)',
     alignItems: 'center', justifyContent: 'center',
-    marginRight: 16, marginTop: 66,
   },
   torchBtnOn: { backgroundColor: 'rgba(212,160,23,0.75)', borderColor: '#d4a017' },
+
+  // CD-43: calibration top bar — amber state (not calibrated)
+  calibTopBarAmber: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    gap: 8,
+    backgroundColor: 'rgba(59,42,10,0.78)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(240,177,66,0.55)',
+  },
+  // CD-43: calibration top bar — green state (calibrated, slimmer)
+  calibTopBarGreen: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    gap: 8,
+    backgroundColor: 'rgba(10,26,18,0.72)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(92,226,142,0.4)',
+  },
+  calibTopBarWarnIcon: { fontSize: 14, color: '#FFE1AC' },
+  calibTopBarTickIcon: { fontSize: 14, color: '#5CE28E' },
+  calibTopBarTextAmber: { color: '#FFE1AC', fontSize: 13, fontWeight: '700', flex: 1 },
+  calibTopBarTextGreen: { color: '#5CE28E', fontSize: 13, fontWeight: '600', flex: 1 },
+  // Amber "Calibrate ›" chip (solid)
+  calibrateChip: {
+    backgroundColor: '#F0B142',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+  },
+  calibrateChipText: { color: '#1A0F00', fontSize: 12, fontWeight: '800' },
+  // Green "Redo" chip (outlined)
+  calibRedoChip: {
+    borderWidth: 1.5,
+    borderColor: '#5CE28E',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 14,
+  },
+  calibRedoChipText: { color: '#5CE28E', fontSize: 12, fontWeight: '700' },
 
   // Stability indicator
   stabilityBar: {
