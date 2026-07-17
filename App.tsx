@@ -102,7 +102,7 @@ function ActiveIndicator() {
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'scan', label: 'Scan' },
-  { key: 'brandmatch', label: 'Brand Match' },
+  { key: 'brandmatch', label: 'Brand Swap' },
   { key: 'planner', label: 'Planner' },
   { key: 'saved', label: 'Saved' },
 ];

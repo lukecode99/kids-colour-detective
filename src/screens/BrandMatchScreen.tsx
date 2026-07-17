@@ -109,7 +109,7 @@ export default function BrandMatchScreen() {
     <View style={styles.container}>
       <SafeAreaView style={{ flex: 1, paddingTop: Platform.OS === 'web' ? 48 : 0 }}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Brand Match</Text>
+          <Text style={styles.headerTitle}>Brand Swap</Text>
         </View>
 
         {source ? (

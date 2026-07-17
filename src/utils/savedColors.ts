@@ -88,14 +88,15 @@ async function persist(entries: SavedColorEntry[]): Promise<void> {
   }
 }
 
-// Copies a temporary photo (camera cache) into permanent app storage so the
-// thumbnail survives app restarts. Returns undefined if anything fails —
-// the colour entry is still saved without a photo.
+// Persists a thumbnail so it survives app restarts.
+// Native callers now pass a data: URI (base64 from ImageManipulator) which is
+// self-contained and stored inline in AsyncStorage — no file-copy needed.
+// The file-copy path below is kept as a legacy fallback for any file:// URIs
+// stored by older builds.
 async function storeThumbnail(id: string, tempUri: string): Promise<string | undefined> {
-  if (Platform.OS === 'web' || !FileSystem) {
-    // On web the caller passes a self-contained data URL; keep it as-is.
-    return tempUri.startsWith('data:') ? tempUri : undefined;
-  }
+  // Data URIs are self-contained; store as-is on every platform.
+  if (tempUri.startsWith('data:')) return tempUri;
+  if (Platform.OS === 'web' || !FileSystem) return undefined;
   try {
     await FileSystem.makeDirectoryAsync(thumbnailDir(), { intermediates: true });
     const ext = tempUri.includes('.png') ? 'png' : 'jpg';

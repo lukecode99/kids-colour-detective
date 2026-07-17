@@ -740,9 +740,9 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         const t = await ImageManipulator.manipulateAsync(
           uri,
           [{ resize: { width: 96 } }],
-          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
         );
-        thumb = t.uri;
+        if (t.base64) thumb = `data:image/jpeg;base64,${t.base64}`;
       }
     } catch {}
     addSavedColor(
@@ -895,7 +895,7 @@ const styles = StyleSheet.create({
   // Stability indicator
   stabilityBar: {
     position: 'absolute',
-    bottom: PEEK_HEIGHT + 48,
+    bottom: PEEK_HEIGHT + BUTTON_SIZE + 20,
     left: 0, right: 0,
     alignItems: 'center', zIndex: 6,
   },
