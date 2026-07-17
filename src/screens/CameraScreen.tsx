@@ -71,9 +71,9 @@ const SCAN_INTERVAL_MS = 1500;
 const SCAN_FPS = 5;
 const SAMPLE_N = 9;
 
-// CD-40/CD-41 drawer constants
-const TAB_BAR_HEIGHT = 76;
-const PEEK_HEIGHT = 64; // CD-41: 64px docked result bar flush to tab bar
+// CD-41 drawer constants — drawer is inside the screen view, which ends at the tab bar top.
+// Do NOT add TAB_BAR_HEIGHT to any bottom values; the screen view bottom IS the tab bar top.
+const PEEK_HEIGHT = 64; // 64px docked result bar flush to the bottom of the screen view
 const EXPANDED_HEIGHT = Math.min(SCREEN_HEIGHT * 0.68, 480);
 const DRAWER_TRANSLATE_COLLAPSED = EXPANDED_HEIGHT - PEEK_HEIGHT;
 const BUTTON_SIZE = 88;
@@ -895,7 +895,7 @@ const styles = StyleSheet.create({
   // Stability indicator
   stabilityBar: {
     position: 'absolute',
-    bottom: TAB_BAR_HEIGHT + PEEK_HEIGHT + 48,
+    bottom: PEEK_HEIGHT + 48,
     left: 0, right: 0,
     alignItems: 'center', zIndex: 6,
   },
@@ -911,7 +911,7 @@ const styles = StyleSheet.create({
   captureBtnArea: {
     position: 'absolute',
     left: 0, right: 0,
-    bottom: TAB_BAR_HEIGHT + PEEK_HEIGHT - BUTTON_SIZE / 2,
+    bottom: PEEK_HEIGHT + 8,
     alignItems: 'center',
     zIndex: 25,
   },
@@ -948,7 +948,7 @@ const styles = StyleSheet.create({
   drawer: {
     position: 'absolute',
     left: 0, right: 0,
-    bottom: TAB_BAR_HEIGHT,
+    bottom: 0,
     height: EXPANDED_HEIGHT,
     backgroundColor: 'transparent',
     zIndex: 20,
@@ -995,7 +995,7 @@ const styles = StyleSheet.create({
   calibOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center', justifyContent: 'flex-end',
-    paddingBottom: TAB_BAR_HEIGHT + PEEK_HEIGHT + 20, zIndex: 30,
+    paddingBottom: PEEK_HEIGHT + 20, zIndex: 30,
   },
   calibCard: {
     backgroundColor: 'rgba(13,14,26,0.94)', borderRadius: 16,
