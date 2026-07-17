@@ -739,8 +739,8 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
         const uri = snap.path.startsWith('file://') ? snap.path : `file://${snap.path}`;
         const t = await ImageManipulator.manipulateAsync(
           uri,
-          [{ resize: { width: 96 } }],
-          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+          [{ resize: { width: 480 } }],
+          { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true }
         );
         if (t.base64) thumb = `data:image/jpeg;base64,${t.base64}`;
       }
