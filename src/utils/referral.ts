@@ -31,7 +31,17 @@ export function retailerFromUrl(url: string): RetailerKey {
 export interface BuyLink {
   url: string;
   retailer: string; // display label, e.g. "Amazon UK", "B&Q"
-  via: 'amazon' | 'awin' | 'direct';
+  via: 'amazon' | 'awin' | 'direct' | 'bandq';
+}
+
+// B&Q-stocked brands: B&Q search deeplink is the primary buy route.
+// RAL / RAL Design / BS 4800 are reference systems only — Amazon is the only option.
+const BANDQ_BRANDS = new Set(['Dulux', 'Crown', 'Valspar', 'Hammerite', "Johnstone's"]);
+const RAL_BRANDS = new Set(['RAL', 'RAL Design', 'BS 4800']);
+
+function bandqSearchUrl(paint: Paint): string {
+  const term = encodeURIComponent(`${paint.brand} ${paint.name} paint`);
+  return `https://www.diy.com/search?term=${term}`;
 }
 
 export function amazonSearchUrl(paint: Paint, config: ReferralConfig = REFERRAL_CONFIG): string {
@@ -54,10 +64,11 @@ const RETAILER_LABELS: Record<RetailerKey, string> = {
   other: 'Retailer',
 };
 
-// The primary monetised buy link for a paint. Amazon UK is the live
-// default; once Awin is approved, B&Q/Wickes retailer URLs route through
-// an Awin deeplink instead.
+// The primary monetised buy link for a paint.
+// Priority: Awin deeplink (when approved) > B&Q search (stocked brands) > Amazon UK.
+// RAL / RAL Design / BS 4800 are reference systems — Amazon only, no B&Q deeplink.
 export function buyLinkFor(paint: Paint, config: ReferralConfig = REFERRAL_CONFIG): BuyLink {
+  // Awin path: B&Q / Wickes retailer URLs route through Awin once approved
   if (config.awinEnabled && paint.retailerUrl) {
     const retailer = retailerFromUrl(paint.retailerUrl);
     const mid = config.awinMids[retailer];
@@ -69,16 +80,24 @@ export function buyLinkFor(paint: Paint, config: ReferralConfig = REFERRAL_CONFI
       };
     }
   }
+  // B&Q-stocked brands: B&Q search deeplink (Awin approval pending)
+  if (BANDQ_BRANDS.has(paint.brand)) {
+    return { url: bandqSearchUrl(paint), retailer: 'B&Q', via: 'bandq' };
+  }
+  // Everything else (including RAL reference systems): Amazon UK search
   return { url: amazonSearchUrl(paint, config), retailer: 'Amazon UK', via: 'amazon' };
 }
 
-// Secondary non-affiliate link straight to the retailer product page,
-// shown alongside the monetised link when the dataset has one.
+// Secondary non-affiliate link. Dataset retailerUrls are guessed slugs or
+// generic directory pages — labelled as the brand site, not an exact page.
+// Excluded: RAL/RAL Design/BS 4800 (Amazon only), B&Q brands (primary is B&Q search).
 export function directLinkFor(paint: Paint): BuyLink | null {
   if (!paint.retailerUrl) return null;
+  if (RAL_BRANDS.has(paint.brand)) return null;
+  if (BANDQ_BRANDS.has(paint.brand)) return null;
   return {
     url: paint.retailerUrl,
-    retailer: RETAILER_LABELS[retailerFromUrl(paint.retailerUrl)],
+    retailer: `${paint.brand} site`,
     via: 'direct',
   };
 }

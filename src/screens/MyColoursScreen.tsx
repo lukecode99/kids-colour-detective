@@ -1,4 +1,5 @@
 // CD-41: Saved tab rebuilt — compact 3-column grid + full-screen Polaroid detail view.
+// CD-44: Filter pills removed from grid; per-capture filter state/persistence in ColourDetail.
 // Every save auto-adds to Planner (shown unconditionally as "In Planner ✓" in detail).
 // Favourite boolean persisted on SavedColorEntry; heart turns purple when set.
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -15,7 +16,7 @@ import {
   Dimensions,
 } from 'react-native';
 
-import { PaintFilters, toggleFilter } from '../utils/filters';
+import { PaintFilters, applyFilters } from '../utils/filters';
 import {
   SavedColorEntry,
   loadSavedColors,
@@ -26,9 +27,9 @@ import {
   setFavourite,
 } from '../utils/savedColors';
 import { matchPaintsLab, PaintMatch, PAINTS } from '../utils/paintMatcher';
-import { applyFilters } from '../utils/filters';
 import { hexToRgb, rgbToLab } from '../utils/colorMath';
 import { COLORS } from '../theme';
+import BuyButton from '../components/BuyButton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -37,7 +38,7 @@ const GRID_PADDING = 12;
 const GRID_GAP = 6;
 const CARD_WIDTH = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * 2) / 3;
 
-// Brand pills shown in header and detail view (label → filter value)
+// Brand pills shown in detail view only (label → filter value)
 const BRAND_PILLS: { label: string; value: string | null }[] = [
   { label: 'All', value: null },
   { label: 'Dulux', value: 'Dulux' },
@@ -122,26 +123,47 @@ function GridCard({
 }
 
 // --- Full-screen Polaroid detail view ---
+// CD-44: filter state is per-capture (owned here, persisted via onSetFilters)
 function ColourDetail({
   sc,
   onBack,
   onRemove,
   onToggleFavourite,
-  filterBrand,
-  filterType,
-  onFilterBrand,
-  onFilterType,
+  onSetFilters,
 }: {
   sc: SavedColorEntry;
   onBack: () => void;
   onRemove: (id: string) => void;
   onToggleFavourite: (id: string, current: boolean) => void;
-  filterBrand: string | null;
-  filterType: string | null;
-  onFilterBrand: (v: string | null) => void;
-  onFilterType: (v: string | null) => void;
+  onSetFilters: (id: string, filters: PaintFilters) => void;
 }) {
   const [showAll, setShowAll] = useState(false);
+
+  // Per-capture filter state, initialised from sc.filters (lazy migration: undefined → null)
+  const [filterBrand, setFilterBrand] = useState<string | null>(
+    sc.filters?.brands?.[0] ?? null
+  );
+  const [filterType, setFilterType] = useState<string | null>(
+    sc.filters?.finishes?.[0] ?? null
+  );
+
+  function handleFilterBrand(v: string | null) {
+    setFilterBrand(v);
+    onSetFilters(sc.id, {
+      brands: v ? [v] : [],
+      surfaces: sc.filters?.surfaces ?? [],
+      finishes: filterType ? [filterType] : [],
+    });
+  }
+
+  function handleFilterType(v: string | null) {
+    setFilterType(v);
+    onSetFilters(sc.id, {
+      brands: filterBrand ? [filterBrand] : [],
+      surfaces: sc.filters?.surfaces ?? [],
+      finishes: v ? [v] : [],
+    });
+  }
 
   const filteredCandidates = useMemo(() => {
     const filters: PaintFilters = {
@@ -229,13 +251,13 @@ function ColourDetail({
       <View style={styles.matchSection}>
         <Text style={styles.matchSectionTitle}>MATCHING COLOURS</Text>
 
-        {/* Brand pills */}
+        {/* Brand pills — per-capture selection, persisted */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillRow} contentContainerStyle={{ paddingHorizontal: 16, gap: 6 }}>
           {BRAND_PILLS.map(p => (
             <TouchableOpacity
               key={p.label}
               style={[styles.filterPill, filterBrand === p.value && styles.filterPillActive]}
-              onPress={() => onFilterBrand(p.value)}
+              onPress={() => handleFilterBrand(p.value)}
             >
               <Text style={[styles.filterPillText, filterBrand === p.value && styles.filterPillTextActive]}>
                 {p.label}
@@ -244,13 +266,13 @@ function ColourDetail({
           ))}
         </ScrollView>
 
-        {/* Type pills */}
+        {/* Type pills — per-capture selection, persisted */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillRow} contentContainerStyle={{ paddingHorizontal: 16, gap: 6 }}>
           {TYPE_PILLS.map(p => (
             <TouchableOpacity
               key={p.label}
               style={[styles.filterPill, filterType === p.value && styles.filterPillActive]}
-              onPress={() => onFilterType(p.value)}
+              onPress={() => handleFilterType(p.value)}
             >
               <Text style={[styles.filterPillText, filterType === p.value && styles.filterPillTextActive]}>
                 {p.label}
@@ -295,20 +317,17 @@ function MatchRow({ match }: { match: PaintMatch }) {
           {match.paint.brand}{finishTag ? ` · ${finishTag.charAt(0).toUpperCase()}${finishTag.slice(1)}` : ''}
         </Text>
       </View>
-      <Text style={styles.matchScore}>
-        {match.matchPercent}% · ΔE {match.deltaE.toFixed(1)}
-      </Text>
+      <Text style={styles.matchScore}>{match.matchPercent}%</Text>
+      <BuyButton paint={match.paint} compact />
     </View>
   );
 }
 
 export default function MyColoursScreen() {
-  const { savedColors, remove, toggleFavourite } = useSavedColors();
+  const { savedColors, remove, toggleFavourite, setFilters } = useSavedColors();
   const [selected, setSelected] = useState<SavedColorEntry | null>(null);
-  const [filterBrand, setFilterBrand] = useState<string | null>(null);
-  const [filterType, setFilterType] = useState<string | null>(null);
 
-  // Keep selected entry in sync when savedColors updates (e.g. after favourite toggle)
+  // Keep selected entry in sync when savedColors updates (e.g. after favourite toggle or filter save)
   useEffect(() => {
     if (selected) {
       const updated = savedColors.find(sc => sc.id === selected.id);
@@ -330,10 +349,7 @@ export default function MyColoursScreen() {
           onBack={() => setSelected(null)}
           onRemove={handleRemove}
           onToggleFavourite={toggleFavourite}
-          filterBrand={filterBrand}
-          filterType={filterType}
-          onFilterBrand={setFilterBrand}
-          onFilterType={setFilterType}
+          onSetFilters={setFilters}
         />
       </View>
     );
@@ -349,37 +365,7 @@ export default function MyColoursScreen() {
           <Text style={styles.headerTitle}>Saved · {total} colour{total !== 1 ? 's' : ''}</Text>
         </View>
 
-        {/* Brand pills */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillRow} contentContainerStyle={{ paddingHorizontal: 16, gap: 6 }}>
-          {BRAND_PILLS.map(p => (
-            <TouchableOpacity
-              key={p.label}
-              style={[styles.filterPill, filterBrand === p.value && styles.filterPillActive]}
-              onPress={() => setFilterBrand(p.value)}
-            >
-              <Text style={[styles.filterPillText, filterBrand === p.value && styles.filterPillTextActive]}>
-                {p.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* Type pills */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.pillRow, { marginBottom: 8 }]} contentContainerStyle={{ paddingHorizontal: 16, gap: 6 }}>
-          {TYPE_PILLS.map(p => (
-            <TouchableOpacity
-              key={p.label}
-              style={[styles.filterPill, filterType === p.value && styles.filterPillActive]}
-              onPress={() => setFilterType(p.value)}
-            >
-              <Text style={[styles.filterPillText, filterType === p.value && styles.filterPillTextActive]}>
-                {p.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* Grid */}
+        {/* Grid — always shows all saves, no grid-level filtering */}
         {total === 0 ? (
           <Text style={styles.empty}>
             Nothing saved yet.{'\n\n'}Point the camera at a wall in the Scan tab — or pick a spot on a photo — and saves appear here.

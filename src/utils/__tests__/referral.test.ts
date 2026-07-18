@@ -52,16 +52,27 @@ describe('retailer detection', () => {
 });
 
 describe('buy links (CD-8 SC: every match with retailerUrl gets a working link)', () => {
-  it('defaults to an Amazon UK search while Awin is unapproved', () => {
+  it('B&Q-stocked brands route to B&Q search while Awin is unapproved', () => {
+    // Dulux is a B&Q-stocked brand; primary link is B&Q search (not Amazon)
     const link = buyLinkFor(paint(), LIVE);
+    expect(link.via).toBe('bandq');
+    expect(link.retailer).toBe('B&Q');
+    expect(link.url).toContain('diy.com/search');
+    expect(link.url).toContain(encodeURIComponent('Dulux Timeless paint'));
+  });
+
+  it('non-B&Q brands default to Amazon UK search while Awin is unapproved', () => {
+    const fbPaint = paint({ brand: 'Farrow & Ball', name: 'Stiffkey Blue', retailerUrl: '' });
+    const link = buyLinkFor(fbPaint, LIVE);
     expect(link.via).toBe('amazon');
     expect(link.retailer).toBe('Amazon UK');
-    expect(link.url).toBe('https://www.amazon.co.uk/s?k=Dulux%20Timeless%20paint');
+    expect(link.url).toContain('amazon.co.uk');
   });
 
   it('adds the associates tag only when configured', () => {
-    expect(amazonSearchUrl(paint(), LIVE)).not.toContain('tag=');
-    expect(amazonSearchUrl(paint(), APPROVED)).toContain('&tag=colourdet-21');
+    const fbPaint = paint({ brand: 'Farrow & Ball', retailerUrl: '' });
+    expect(amazonSearchUrl(fbPaint, LIVE)).not.toContain('tag=');
+    expect(amazonSearchUrl(fbPaint, APPROVED)).toContain('&tag=colourdet-21');
   });
 
   it('routes B&Q/Wickes through Awin once the flag is flipped', () => {
@@ -72,30 +83,48 @@ describe('buy links (CD-8 SC: every match with retailerUrl gets a working link)'
     expect(link.url).toContain(encodeURIComponent(paint().retailerUrl));
 
     const wickes = buyLinkFor(
-      paint({ retailerUrl: 'https://www.wickes.co.uk/p/456' }),
+      paint({ brand: 'Farrow & Ball', retailerUrl: 'https://www.wickes.co.uk/p/456' }),
       APPROVED
     );
     expect(wickes.retailer).toBe('Wickes');
     expect(wickes.url).toContain('awinmid=5678');
   });
 
-  it('falls back to Amazon when Awin is on but the retailer is unknown', () => {
+  it('falls back to B&Q search for B&Q brand when Awin is on but retailer is unknown', () => {
+    // Dulux + Screwfix URL: Awin won't match, but Dulux is a B&Q brand → B&Q search
     const link = buyLinkFor(paint({ retailerUrl: 'https://www.screwfix.com/p/9' }), APPROVED);
+    expect(link.via).toBe('bandq');
+  });
+
+  it('falls back to Amazon when Awin is on but non-B&Q brand and retailer is unknown', () => {
+    const fbPaint = paint({ brand: 'Farrow & Ball', retailerUrl: 'https://www.screwfix.com/p/9' });
+    const link = buyLinkFor(fbPaint, APPROVED);
     expect(link.via).toBe('amazon');
   });
 
-  it('always produces a link even with no retailerUrl', () => {
+  it('always produces a link — B&Q brands get B&Q search even without retailerUrl', () => {
     const link = buyLinkFor(paint({ retailerUrl: '' }), LIVE);
-    expect(link.url).toMatch(/^https:\/\/www\.amazon\.co\.uk\/s\?k=/);
+    expect(link.via).toBe('bandq');
+    expect(link.url).toContain('diy.com/search');
     expect(directLinkFor(paint({ retailerUrl: '' }))).toBeNull();
   });
 
-  it('offers a direct retailer link when the dataset has one', () => {
-    const direct = directLinkFor(paint());
+  it('direct link is null for B&Q brands (primary is already B&Q search)', () => {
+    // Dulux is a B&Q brand — no secondary link needed
+    expect(directLinkFor(paint())).toBeNull();
+  });
+
+  it('direct link for non-B&Q brand labels as brand site (not exact page)', () => {
+    const fbPaint = paint({ brand: 'Farrow & Ball', name: 'Stiffkey Blue', retailerUrl: 'https://farrow-ball.com/x' });
+    const direct = directLinkFor(fbPaint);
     expect(direct).not.toBeNull();
     expect(direct!.via).toBe('direct');
-    expect(direct!.url).toBe(paint().retailerUrl);
-    expect(direct!.retailer).toBe('B&Q');
+    expect(direct!.url).toBe('https://farrow-ball.com/x');
+    expect(direct!.retailer).toBe('Farrow & Ball site');
+  });
+
+  it('direct link is null when no retailerUrl', () => {
+    expect(directLinkFor(paint({ retailerUrl: '' }))).toBeNull();
   });
 
   it('deep-link builder URL-encodes the target', () => {
@@ -121,7 +150,7 @@ describe('link-out log (CD-8 SC: logged locally)', () => {
     expect(after[0].name).toBe('Willow Tree');
     expect(after[0].timestamp).toBe(2000);
     expect(after[1].brand).toBe('Dulux');
-    expect(after[1].via).toBe('amazon');
+    expect(after[1].via).toBe('bandq'); // Dulux is a B&Q-stocked brand
 
     const persisted = await loadLinkOuts();
     expect(persisted).toEqual(after);
