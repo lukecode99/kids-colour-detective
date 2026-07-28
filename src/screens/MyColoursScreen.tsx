@@ -403,7 +403,7 @@ const styles = StyleSheet.create({
   },
   filterPillActive: { backgroundColor: COLORS.purple, borderColor: COLORS.purple },
   filterPillText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
-  filterPillTextActive: { color: '#fff' },
+  filterPillTextActive: { color: COLORS.onAccent },
 
   empty: {
     color: COLORS.textMuted, textAlign: 'center',

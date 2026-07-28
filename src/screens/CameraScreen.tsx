@@ -63,7 +63,7 @@ import { addSavedColor, loadSavedColors, newSavedColorId } from '../utils/savedC
 import { recordCaptureHintSave } from '../utils/captureHint';
 import { setCurrentColour } from '../utils/currentColour';
 import { SCAN_FOOTER_HINT } from '../utils/scanCopy';
-import { COLORS, FONTS } from '../theme';
+import { COLORS, FONTS, OVERLAY } from '../theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -959,7 +959,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(77,107,255,0.35)',
     alignItems: 'center', justifyContent: 'center',
   },
-  torchBtnOn: { backgroundColor: 'rgba(212,160,23,0.75)', borderColor: '#d4a017' },
+  torchBtnOn: { backgroundColor: 'rgba(212,160,23,0.75)', borderColor: OVERLAY.warn },
 
   // CD-43: calibration top bar — amber state (not calibrated)
   calibTopBarAmber: {
@@ -983,27 +983,27 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(92,226,142,0.4)',
   },
-  calibTopBarWarnIcon: { fontSize: 14, color: '#FFE1AC' },
-  calibTopBarTickIcon: { fontSize: 14, color: '#5CE28E' },
-  calibTopBarTextAmber: { color: '#FFE1AC', fontSize: 13, fontWeight: '700', flex: 1 },
-  calibTopBarTextGreen: { color: '#5CE28E', fontSize: 13, fontWeight: '600', flex: 1 },
+  calibTopBarWarnIcon: { fontSize: 14, color: OVERLAY.warnSoft },
+  calibTopBarTickIcon: { fontSize: 14, color: OVERLAY.good },
+  calibTopBarTextAmber: { color: OVERLAY.warnSoft, fontSize: 13, fontWeight: '700', flex: 1 },
+  calibTopBarTextGreen: { color: OVERLAY.good, fontSize: 13, fontWeight: '600', flex: 1 },
   // Amber "Calibrate ›" chip (solid)
   calibrateChip: {
-    backgroundColor: '#F0B142',
+    backgroundColor: OVERLAY.warn,
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 14,
   },
-  calibrateChipText: { color: '#1A0F00', fontSize: 12, fontWeight: '800' },
+  calibrateChipText: { color: OVERLAY.onWarn, fontSize: 12, fontWeight: '800' },
   // Green "Redo" chip (outlined)
   calibRedoChip: {
     borderWidth: 1.5,
-    borderColor: '#5CE28E',
+    borderColor: OVERLAY.good,
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 14,
   },
-  calibRedoChipText: { color: '#5CE28E', fontSize: 12, fontWeight: '700' },
+  calibRedoChipText: { color: OVERLAY.good, fontSize: 12, fontWeight: '700' },
 
   // Stability indicator
   stabilityBar: {
@@ -1013,7 +1013,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', zIndex: 6,
   },
   stabilityText: {
-    color: '#FFD700',
+    color: OVERLAY.warn,
     fontSize: 13, fontWeight: '700',
     backgroundColor: 'rgba(0,0,0,0.45)',
     paddingHorizontal: 14, paddingVertical: 5,
@@ -1037,7 +1037,7 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#4D6BFF',
+    shadowColor: COLORS.accent,
     shadowOpacity: 0.65,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 0 },
@@ -1074,9 +1074,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     gap: 12,
-    backgroundColor: '#0A0E1A',
+    backgroundColor: COLORS.bg,
     borderTopWidth: 1,
-    borderTopColor: '#232C4A',
+    borderTopColor: COLORS.border,
   },
   resultSwatch: {
     width: 32, height: 32, borderRadius: 8,
@@ -1124,7 +1124,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
   },
   calibHex: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
-  calibWarn: { color: '#FFD700', fontSize: 13, fontWeight: '600', marginTop: 8 },
+  calibWarn: { color: OVERLAY.warn, fontSize: 13, fontWeight: '600', marginTop: 8 },
   calibBtnRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 14 },
   calibCancel: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20 },
   calibCancelText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '700' },
@@ -1151,7 +1151,7 @@ const styles = StyleSheet.create({
 
   // --- In-drawer controls ---
   lightHintText: {
-    color: '#FFD700', fontSize: 12, fontWeight: '700',
+    color: OVERLAY.warn, fontSize: 12, fontWeight: '700',
     paddingHorizontal: 20, paddingTop: 8,
   },
   expandedControls: {
@@ -1162,9 +1162,11 @@ const styles = StyleSheet.create({
     borderRadius: 14, backgroundColor: COLORS.surface,
     borderWidth: 1, borderColor: COLORS.border,
   },
-  pillActive: { backgroundColor: '#d4a017', borderColor: '#d4a017' },
+  pillActive: { backgroundColor: OVERLAY.warn, borderColor: OVERLAY.warn },
   pillText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '700' },
-  pillTextActive: { color: '#fff' },
+  // Dark ink on the amber fill. It was white, which was never really legible on that colour and
+  // only passed because the pill sat on a dark screen.
+  pillTextActive: { color: OVERLAY.onWarn },
   scanHintLine: {
     color: 'rgba(255,255,255,0.35)', fontSize: 12, fontWeight: '600',
     lineHeight: 16,

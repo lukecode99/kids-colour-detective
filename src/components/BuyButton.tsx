@@ -38,7 +38,7 @@ export default function BuyButton({
           onPress={() => openLink(paint, direct)}
           hitSlop={{ top: 6, bottom: 6 }}
         >
-          <Text style={bStyles.pillText}>{direct.retailer} ↗</Text>
+          <Text style={[bStyles.pillText, bStyles.pillTextGhost]}>{direct.retailer} ↗</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -55,11 +55,15 @@ const bStyles = StyleSheet.create({
     marginLeft: 8,
   },
   pillCompact: { paddingHorizontal: 8, paddingVertical: 3 },
+  // The secondary pill was a white wash at 10% — which is only a visible pill when the thing
+  // underneath is dark. An outline in the border token is the same shape and survives both skins.
   pillGhost: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'transparent',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: COLORS.border,
   },
-  pillText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  pillText: { color: COLORS.onAccent, fontSize: 11, fontWeight: '700' },
+  // ...but the ghost pill has no accent under it, so its label takes the normal text colour.
+  pillTextGhost: { color: COLORS.text },
   pillTextCompact: { fontSize: 10 },
 });

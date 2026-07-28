@@ -108,7 +108,7 @@ const cStyles = StyleSheet.create({
   },
   coatBtnActive: { backgroundColor: COLORS.accent },
   coatText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '700' },
-  coatTextActive: { color: '#fff' },
+  coatTextActive: { color: COLORS.onAccent },
   resultRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
   resultText: { flex: 1, color: COLORS.text, fontSize: 13 },
   resultStrong: { fontWeight: '800' },

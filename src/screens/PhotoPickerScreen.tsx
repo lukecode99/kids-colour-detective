@@ -569,7 +569,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accent, marginLeft: 10,
   },
   saveBtnDone: { backgroundColor: 'rgba(255,255,255,0.12)' },
-  saveBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  saveBtnText: { color: COLORS.onAccent, fontSize: 13, fontWeight: '700' },
   emptyText: {
     color: COLORS.textMuted, fontSize: 15, fontWeight: '600',
     paddingHorizontal: 20, paddingTop: 14, paddingBottom: 6,

@@ -530,7 +530,7 @@ const styles = StyleSheet.create({
   },
   modeChipActive: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
   modeChipText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
-  modeChipTextActive: { color: '#fff' },
+  modeChipTextActive: { color: COLORS.onAccent },
   wheelWrap: { alignItems: 'center', marginBottom: 14 },
   wheel: {
     width: WHEEL_SIZE, height: WHEEL_SIZE, borderRadius: RADIUS,

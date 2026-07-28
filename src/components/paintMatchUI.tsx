@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
   },
   filterChipActive: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
   filterChipText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
-  filterChipTextActive: { color: '#fff' },
+  filterChipTextActive: { color: COLORS.onAccent },
   filterEmptyText: {
     color: COLORS.textMuted, fontSize: 13, fontWeight: '600',
     paddingHorizontal: 20, paddingVertical: 8,

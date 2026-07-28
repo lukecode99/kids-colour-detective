@@ -85,19 +85,12 @@ function TabIcon({ tab, color, size = 23 }: { tab: TabKey; color: string; size?:
 }
 
 // Active tab underline indicator (gradient on web, split view on native).
+// A flat bar in the single accent. This used to be a blue→purple gradient, split into two halves
+// on native to fake it; the website has one accent and no gradient anywhere, and that gradient was
+// the loudest thing still saying "different product". One colour also means web and native finally
+// render the same indicator instead of an original and an approximation of it.
 function ActiveIndicator() {
-  if (Platform.OS === 'web') {
-    // @ts-ignore - web-only background gradient
-    const webStyle = { ...StyleSheet.flatten(styles.activeIndicatorBase), background: 'linear-gradient(90deg,#4D6BFF,#7C5CFF)' };
-    return <View style={webStyle as any} />;
-  }
-  // Native: two-tone split approximating the gradient.
-  return (
-    <View style={styles.activeIndicatorBase}>
-      <View style={{ flex: 1, backgroundColor: COLORS.blue }} />
-      <View style={{ flex: 1, backgroundColor: COLORS.purple }} />
-    </View>
-  );
+  return <View style={[styles.activeIndicatorBase, { backgroundColor: COLORS.accent }]} />;
 }
 
 const TABS: { key: TabKey; label: string }[] = [
@@ -191,28 +184,28 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '600',
   },
-  tabLabelActive: { color: '#fff' },
+  // The active tab was white-on-dark, which only worked because the app was always dark. It now
+  // takes the accent, matching the indicator above it and surviving a flip to the light skin.
+  tabLabelActive: { color: COLORS.accent },
   activeIndicatorBase: {
     position: 'absolute',
     top: 0,
     width: 40,
     height: 3,
     borderRadius: 3,
-    overflow: 'hidden',
-    flexDirection: 'row',
   },
   badge: {
     position: 'absolute',
     top: 6,
     right: 18,
-    backgroundColor: COLORS.purple,
+    backgroundColor: COLORS.accent,
     borderRadius: 8,
     paddingHorizontal: 5,
     paddingVertical: 1,
     minWidth: 16,
     alignItems: 'center',
   },
-  badgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  badgeText: { color: COLORS.onAccent, fontSize: 10, fontWeight: '800' },
   centered: {
     flex: 1,
     backgroundColor: COLORS.bg,

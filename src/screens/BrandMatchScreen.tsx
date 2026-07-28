@@ -195,7 +195,7 @@ const styles = StyleSheet.create({
   },
   chipActive: { backgroundColor: COLORS.accent },
   chipText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
-  chipTextActive: { color: '#fff' },
+  chipTextActive: { color: COLORS.onAccent },
   search: {
     marginHorizontal: 20, marginBottom: 8,
     paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12,

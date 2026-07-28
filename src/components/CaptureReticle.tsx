@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
+import { COLORS } from '../theme';
 
 export const CROSSHAIR_SIZE = 132;
 
@@ -39,7 +40,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     // Soft blue glow — shadow renders on native; a CSS box-shadow is added
     // via inline style on web (see CameraScreen's reticleGlow wrapper).
-    shadowColor: '#4D6BFF',
+    shadowColor: COLORS.accent,
     shadowOpacity: 0.28,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 0 },
