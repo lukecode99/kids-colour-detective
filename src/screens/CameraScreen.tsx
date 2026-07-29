@@ -194,7 +194,7 @@ function CalibrationOverlay({
             onPress={onLock}
             disabled={!canLock}
           >
-            <Text style={styles.calibLockText}>Lock</Text>
+            <Text style={[styles.calibLockText, !canLock && styles.calibLockTextDisabled]}>Lock</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1121,7 +1121,7 @@ const styles = StyleSheet.create({
   calibSwatchRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 10 },
   calibSwatch: {
     width: 36, height: 36, borderRadius: 8,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
+    borderWidth: 1, borderColor: COLORS.hairlineStrong,
   },
   calibHex: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
   calibWarn: { color: OVERLAY.warn, fontSize: 13, fontWeight: '600', marginTop: 8 },
@@ -1131,8 +1131,12 @@ const styles = StyleSheet.create({
   calibLock: {
     backgroundColor: COLORS.blue, paddingHorizontal: 20, paddingVertical: 9, borderRadius: 20,
   },
-  calibLockDisabled: { backgroundColor: 'rgba(255,255,255,0.15)' },
-  calibLockText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  calibLockDisabled: { backgroundColor: COLORS.fillStrong },
+  calibLockText: { color: COLORS.onAccent, fontSize: 14, fontWeight: '700' },
+  // The label only gets to be onAccent while there's an accent under it. Disabled, the fill drops
+  // to a neutral wash, and onAccent is by definition the wrong colour against that — it was white
+  // on white here the moment the surfaces went pale.
+  calibLockTextDisabled: { color: COLORS.textMuted },
 
   chooserBtn: {
     backgroundColor: COLORS.surface, borderRadius: 12,
@@ -1147,7 +1151,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 6,
     borderRadius: 14, backgroundColor: COLORS.blue,
   },
-  chooserGetOneText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  chooserGetOneText: { color: COLORS.onAccent, fontSize: 12, fontWeight: '700' },
 
   // --- In-drawer controls ---
   lightHintText: {
@@ -1168,7 +1172,7 @@ const styles = StyleSheet.create({
   // only passed because the pill sat on a dark screen.
   pillTextActive: { color: OVERLAY.onWarn },
   scanHintLine: {
-    color: 'rgba(255,255,255,0.35)', fontSize: 12, fontWeight: '600',
+    color: COLORS.textFaint, fontSize: 12, fontWeight: '600',
     lineHeight: 16,
     paddingHorizontal: 24, paddingTop: 4, paddingBottom: 2,
   },

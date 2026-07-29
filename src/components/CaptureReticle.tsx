@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { COLORS } from '../theme';
+import { COLORS, OVERLAY } from '../theme';
 
 export const CROSSHAIR_SIZE = 132;
 
@@ -34,7 +34,7 @@ const styles = StyleSheet.create({
     height: CROSSHAIR_SIZE,
     borderRadius: CROSSHAIR_SIZE / 2,
     borderWidth: 2.5,
-    borderColor: 'rgba(255,255,255,0.9)',
+    borderColor: OVERLAY.ring,
     backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
@@ -47,21 +47,21 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   circleDisabled: {
-    borderColor: 'rgba(255,255,255,0.4)',
+    borderColor: OVERLAY.ringSoft,
     shadowOpacity: 0,
   },
   crossHorizontal: {
     position: 'absolute',
     width: 20,
     height: 2,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: OVERLAY.ring,
     borderRadius: 1,
   },
   crossVertical: {
     position: 'absolute',
     width: 2,
     height: 20,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: OVERLAY.ring,
     borderRadius: 1,
   },
 });

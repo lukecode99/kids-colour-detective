@@ -157,7 +157,7 @@ export default function BrandMatchScreen() {
                   value={query}
                   onChangeText={setQuery}
                   placeholder={`Search ${brand} by name or code…`}
-                  placeholderTextColor="rgba(255,255,255,0.35)"
+                  placeholderTextColor={COLORS.placeholder}
                   autoCorrect={false}
                   clearButtonMode="while-editing"
                 />
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
   },
   rowSwatch: {
     width: 38, height: 38, borderRadius: 8, marginRight: 12,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: COLORS.hairline,
   },
   rowName: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
   rowSub: { color: COLORS.textMuted, fontSize: 12, marginTop: 1 },
@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
   },
   sourceSwatch: {
     width: 52, height: 52, borderRadius: 10, marginRight: 14,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 1, borderColor: COLORS.hairline,
   },
   sourceName: { color: COLORS.text, fontSize: 19, fontWeight: '800', letterSpacing: -0.3 },
   sectionTitle: {
@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
   swatchPair: {
     flexDirection: 'row', width: 56, height: 38, borderRadius: 8,
     overflow: 'hidden', marginRight: 12,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: COLORS.hairline,
   },
   pairHalf: { flex: 1, height: '100%' },
   altCloseness: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginTop: 2 },

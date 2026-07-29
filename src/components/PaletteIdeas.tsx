@@ -15,7 +15,7 @@ import {
 } from '../utils/colorHarmony';
 import { Paint } from '../utils/paintMatcher';
 import BuyButton from './BuyButton';
-import { COLORS } from '../theme';
+import { COLORS, OVERLAY } from '../theme';
 
 const ROLE_LABELS: Record<HarmonyRole, string> = {
   complementary: 'Complementary — the opposite, maximum pop',
@@ -178,7 +178,7 @@ const pStyles = StyleSheet.create({
     marginTop: 10,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.1)',
+    borderTopColor: COLORS.hairline,
   },
   sectionTitle: {
     color: COLORS.text,
@@ -208,12 +208,12 @@ const pStyles = StyleSheet.create({
     paddingVertical: 4,
   },
   paintRowHighlighted: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: COLORS.fillStrong,
     borderRadius: 8,
   },
   segmentHighlighted: {
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.9)',
+    borderColor: OVERLAY.ring,
   },
   swatch: {
     width: 26,
@@ -221,7 +221,7 @@ const pStyles = StyleSheet.create({
     borderRadius: 6,
     marginRight: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: COLORS.hairlineStrong,
   },
   paintName: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
   paintCode: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
