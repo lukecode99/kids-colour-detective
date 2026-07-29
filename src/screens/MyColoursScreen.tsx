@@ -471,7 +471,7 @@ const styles = StyleSheet.create({
   },
   stripSwatch: {
     width: 28, height: 28, borderRadius: 6,
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 1.5, borderColor: COLORS.hairlineStrong,
     flexShrink: 0,
   },
   stripName: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
@@ -497,7 +497,7 @@ const styles = StyleSheet.create({
   },
   matchSwatch: {
     width: 24, height: 24, borderRadius: 6,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: COLORS.hairline,
     flexShrink: 0,
   },
   matchName: { color: COLORS.text, fontSize: 13, fontWeight: '600' },

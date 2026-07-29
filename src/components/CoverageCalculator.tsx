@@ -28,7 +28,7 @@ export default function CoverageCalculator({ paint }: { paint?: Paint }) {
             style={cStyles.input}
             keyboardType="decimal-pad"
             placeholder="e.g. 13"
-            placeholderTextColor="rgba(255,255,255,0.3)"
+            placeholderTextColor={COLORS.placeholder}
             value={widthText}
             onChangeText={setWidthText}
           />
@@ -39,7 +39,7 @@ export default function CoverageCalculator({ paint }: { paint?: Paint }) {
             style={cStyles.input}
             keyboardType="decimal-pad"
             placeholder="2.4"
-            placeholderTextColor="rgba(255,255,255,0.3)"
+            placeholderTextColor={COLORS.placeholder}
             value={heightText}
             onChangeText={setHeightText}
           />
@@ -85,7 +85,7 @@ const cStyles = StyleSheet.create({
     marginTop: 8,
     padding: 12,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: COLORS.fill,
   },
   title: { color: COLORS.text, fontSize: 13, fontWeight: '800', marginBottom: 8 },
   inputRow: { flexDirection: 'row', gap: 10 },
@@ -97,14 +97,14 @@ const cStyles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: COLORS.fill,
   },
   coatRow: { flexDirection: 'row', gap: 6 },
   coatBtn: {
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: COLORS.fill,
   },
   coatBtnActive: { backgroundColor: COLORS.accent },
   coatText: { color: COLORS.textMuted, fontSize: 14, fontWeight: '700' },

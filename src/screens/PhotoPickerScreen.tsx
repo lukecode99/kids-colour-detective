@@ -42,7 +42,7 @@ import {
   bestMatchLabel,
 } from '../components/paintMatchUI';
 import { setCurrentColour } from '../utils/currentColour';
-import { COLORS } from '../theme';
+import { COLORS, OVERLAY } from '../theme';
 
 const LOUPE_SIZE = 120;
 const LOUPE_MAG = 3; // extra magnification on top of the current zoom
@@ -462,7 +462,12 @@ export default function PhotoPickerScreen({ onClose }: { onClose: () => void }) 
                 onPress={saveSample}
                 disabled={savedHex === sample.info.hex}
               >
-                <Text style={styles.saveBtnText}>
+                <Text
+                  style={[
+                    styles.saveBtnText,
+                    savedHex === sample.info.hex && styles.saveBtnTextDone,
+                  ]}
+                >
                   {savedHex === sample.info.hex ? '✓ Saved' : '💾 Save'}
                 </Text>
               </TouchableOpacity>
@@ -508,14 +513,14 @@ const styles = StyleSheet.create({
   },
   topBtn: {
     width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: COLORS.fill,
     alignItems: 'center', justifyContent: 'center',
   },
   topBtnText: { color: COLORS.text, fontSize: 22, fontWeight: '700' },
-  topBtnDisabled: { color: 'rgba(255,255,255,0.25)' },
+  topBtnDisabled: { color: COLORS.textFaint },
   choosePill: {
     paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: COLORS.fill,
   },
   choosePillText: { color: COLORS.text, fontSize: 14, fontWeight: '700' },
   zoomGroup: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -532,7 +537,7 @@ const styles = StyleSheet.create({
   loupe: {
     position: 'absolute', width: LOUPE_SIZE, height: LOUPE_SIZE,
     borderRadius: LOUPE_SIZE / 2, overflow: 'hidden',
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 2, borderColor: OVERLAY.ring,
     backgroundColor: '#000',
     alignItems: 'center', justifyContent: 'center',
   },
@@ -568,8 +573,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
     backgroundColor: COLORS.accent, marginLeft: 10,
   },
-  saveBtnDone: { backgroundColor: 'rgba(255,255,255,0.12)' },
+  saveBtnDone: { backgroundColor: COLORS.fillStrong },
   saveBtnText: { color: COLORS.onAccent, fontSize: 13, fontWeight: '700' },
+  // Once saved, the fill stops being the accent, so the label has to stop being onAccent with it.
+  saveBtnTextDone: { color: COLORS.textMuted },
   emptyText: {
     color: COLORS.textMuted, fontSize: 15, fontWeight: '600',
     paddingHorizontal: 20, paddingTop: 14, paddingBottom: 6,

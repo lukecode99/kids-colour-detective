@@ -180,8 +180,8 @@ const styles = StyleSheet.create({
   },
   filterChip: {
     paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.08)', marginRight: 6,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: COLORS.fill, marginRight: 6,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.hairline,
   },
   filterChipActive: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
   filterChipText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600' },
@@ -194,11 +194,11 @@ const styles = StyleSheet.create({
   matchList: { paddingHorizontal: 20, paddingBottom: 8 },
   matchListRow: {
     flexDirection: 'row', alignItems: 'center', paddingVertical: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.08)',
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.hairline,
   },
   matchListSwatch: {
     width: 18, height: 18, borderRadius: 4, marginRight: 10,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.25)',
+    borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.hairlineStrong,
   },
   matchListText: { flex: 1 },
   matchListName: { color: COLORS.text, fontSize: 13, fontWeight: '600' },

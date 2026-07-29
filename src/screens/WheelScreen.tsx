@@ -526,7 +526,7 @@ const styles = StyleSheet.create({
   modeChip: {
     paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16,
     backgroundColor: COLORS.surface,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: COLORS.hairline,
   },
   modeChipActive: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
   modeChipText: { color: COLORS.textMuted, fontSize: 13, fontWeight: '700' },
@@ -534,14 +534,14 @@ const styles = StyleSheet.create({
   wheelWrap: { alignItems: 'center', marginBottom: 14 },
   wheel: {
     width: WHEEL_SIZE, height: WHEEL_SIZE, borderRadius: RADIUS,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: COLORS.fill,
+    borderWidth: 1, borderColor: COLORS.hairline,
     overflow: 'hidden', // CD-25: the zoomed pane clips to the wheel circle
   },
   // Saved-only mode: the face recedes so the markers carry the tab.
   wheelDimmed: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: COLORS.fill,
+    borderColor: COLORS.hairline,
   },
   savedEmptyHint: {
     color: COLORS.textMuted, fontSize: 13, marginTop: 8,
@@ -575,7 +575,7 @@ const styles = StyleSheet.create({
   },
   markerPhoto: {
     width: 72, height: 72, borderRadius: 10, marginRight: 12,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 1, borderColor: COLORS.hairline,
   },
   markerInfo: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
   markerHex: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600', marginTop: 2 },
@@ -588,7 +588,7 @@ const styles = StyleSheet.create({
     width: 34, height: 34, borderRadius: 17,
     alignItems: 'center', justifyContent: 'center',
     backgroundColor: COLORS.surface,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: COLORS.hairline,
   },
   zoomBtnText: { color: COLORS.text, fontSize: 18, fontWeight: '700', lineHeight: 20 },
   zoomLevel: {
@@ -598,7 +598,7 @@ const styles = StyleSheet.create({
   zoomReset: {
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16,
     backgroundColor: COLORS.surface,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1, borderColor: COLORS.hairline,
   },
   zoomResetText: { color: COLORS.text, fontSize: 13, fontWeight: '700' },
   sliderRow: {
@@ -609,7 +609,7 @@ const styles = StyleSheet.create({
   slider: {
     flex: 1, height: SLIDER_H, borderRadius: SLIDER_H / 2, overflow: 'hidden',
     flexDirection: 'row', marginHorizontal: 4,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 1, borderColor: COLORS.hairline,
   },
   sliderThumb: {
     position: 'absolute', top: 2, bottom: 2, width: 4, marginLeft: -2,
@@ -623,7 +623,7 @@ const styles = StyleSheet.create({
   },
   previewSwatch: {
     width: 52, height: 52, borderRadius: 10, marginRight: 14,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 1, borderColor: COLORS.hairline,
   },
   previewName: { color: COLORS.text, fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
   previewHex: { color: COLORS.textMuted, fontSize: 13, fontWeight: '600', marginTop: 2 },
