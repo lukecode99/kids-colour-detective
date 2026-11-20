@@ -7,7 +7,7 @@
 // The ranking and add/remove rules live in utils/compareSearch.ts (unit-tested); this
 // file is only the screen. A slot can also be seeded from a scan or My Colours via
 // `seed` — those arrive as captures (hex, no brand) and carry a "From your scan" tag.
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -19,6 +19,7 @@ import {
   ScrollView,
   FlatList,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 
 import { Paint } from '../utils/paintMatcher';
@@ -151,9 +152,28 @@ function SwatchCard({ item, onRemove }: { item: CompareItem; onRemove: (id: stri
   );
 }
 
+const STORAGE_KEY = 'compareSet.v1';
+
 export default function CompareScreen({ seed }: { seed?: CompareItem | null }) {
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<CompareItem[]>([]);
+  const initialLoadDone = useRef(false);
+
+  // Load persisted compare set on mount.
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY).then(raw => {
+      initialLoadDone.current = true;
+      if (raw) {
+        try { setItems(JSON.parse(raw)); } catch {}
+      }
+    });
+  }, []);
+
+  // Persist whenever items change (but not before the initial load completes).
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(items)).catch(() => {});
+  }, [items]);
 
   // Seed a slot handed in from a scan / My Colours ("compare this one"), once.
   useEffect(() => {

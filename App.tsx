@@ -1,21 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Platform, View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
-import {
-  useFonts,
-  Fraunces_600SemiBold,
-  Fraunces_700Bold,
-} from '@expo-google-fonts/fraunces';
-import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
-} from '@expo-google-fonts/inter';
+import { useFonts } from 'expo-font';
 import CameraScreen from './src/screens/CameraScreen';
 import WheelScreen from './src/screens/WheelScreen';
 import CompareScreen from './src/screens/CompareScreen';
 import MyColoursScreen, { useSavedColors } from './src/screens/MyColoursScreen';
-import { COLORS, markFontsLoaded } from './src/theme';
+import { COLORS, FONT_FAMILIES, markFontsLoaded } from './src/theme';
 
 interface State {
   hasError: boolean;
@@ -164,16 +154,11 @@ function TabRoot() {
 }
 
 export default function App() {
-  // Load the site's two typefaces (Fraunces for colour names/headings, Inter for body)
-  // before first paint, so nothing renders in the fallback face and then reflows. The
-  // family strings here must match FONT_FAMILY in theme.ts.
+  // Load Fraunces-Bold + Inter-Regular from bundled TTFs (SIL OFL, assets/fonts/).
+  // Family strings must match FONT_FAMILIES in theme.ts.
   const [fontsLoaded] = useFonts({
-    Fraunces_600SemiBold,
-    Fraunces_700Bold,
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
+    [FONT_FAMILIES.heading]: require('./assets/fonts/Fraunces-Bold.ttf'),
+    [FONT_FAMILIES.body]: require('./assets/fonts/Inter-Regular.ttf'),
   });
 
   useEffect(() => {

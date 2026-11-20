@@ -153,18 +153,23 @@ export const OVERLAY = {
   ringSoft: 'rgba(255,255,255,0.4)',
 };
 
-// The site's two typefaces: Fraunces (a warm serif) for colour names and headings,
-// Inter for everything else. Both are loaded by expo-font in App.tsx from the
-// @expo-google-fonts packages; the family strings below are those packages' export
-// names. Route headings through SERIF and body through BODY rather than hardcoding a
-// family at call sites, so swapping a weight is one edit here.
+// The site's two typefaces: Fraunces-Bold (headings, warm serif) and Inter-Regular
+// (body). Loaded from bundled TTFs via expo-font in App.tsx. The family strings below
+// must exactly match the keys passed to useFonts.
 export const FONT_FAMILY = {
-  serif: 'Fraunces_600SemiBold',
-  serifBold: 'Fraunces_700Bold',
-  body: 'Inter_400Regular',
-  bodyMedium: 'Inter_500Medium',
-  bodySemiBold: 'Inter_600SemiBold',
-  bodyBold: 'Inter_700Bold',
+  serif: 'Fraunces-Bold',
+  serifBold: 'Fraunces-Bold',
+  body: 'Inter-Regular',
+  bodyMedium: 'Inter-Regular',
+  bodySemiBold: 'Inter-Regular',
+  bodyBold: 'Inter-Regular',
+};
+
+// FONT_FAMILIES is the two-key public export — heading (Fraunces) + body (Inter).
+// Use FONT_FAMILY for the full set of aliases; FONT_FAMILIES in new screens and components.
+export const FONT_FAMILIES = {
+  heading: 'Fraunces-Bold',
+  body: 'Inter-Regular',
 };
 
 // Set true by App.tsx once useFonts resolves. If a font token is read before the

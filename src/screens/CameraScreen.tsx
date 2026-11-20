@@ -64,6 +64,8 @@ import { recordCaptureHintSave } from '../utils/captureHint';
 import { setCurrentColour } from '../utils/currentColour';
 import { SCAN_FOOTER_HINT } from '../utils/scanCopy';
 import { COLORS, FONTS, OVERLAY } from '../theme';
+import { captureToCompareItem } from '../utils/compareSearch';
+import { addToCompareSet } from '../stores/compareStore';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -73,7 +75,7 @@ const SAMPLE_N = 9;
 
 // CD-41 drawer constants — drawer is inside the screen view, which ends at the tab bar top.
 // Do NOT add TAB_BAR_HEIGHT to any bottom values; the screen view bottom IS the tab bar top.
-const PEEK_HEIGHT = 64; // 64px docked result bar flush to the bottom of the screen view
+const PEEK_HEIGHT = 220; // redesigned result bar: dab swatch, Fraunces name, ΔE badge, chips, CTA
 const EXPANDED_HEIGHT = Math.min(SCREEN_HEIGHT * 0.68, 480);
 const DRAWER_TRANSLATE_COLLAPSED = EXPANDED_HEIGHT - PEEK_HEIGHT;
 const BUTTON_SIZE = 88;
@@ -286,7 +288,30 @@ function CaptureButton({
   );
 }
 
-// CD-41: swipe-up drawer — collapsed = 64px docked result bar flush to tab bar.
+// Lopsided paint-blob swatch — matches the dab motif used in CompareScreen.
+function DabSwatch({ color, size }: { color: string; size: number }) {
+  const r = size / 2;
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: color,
+        borderTopLeftRadius: r,
+        borderTopRightRadius: r,
+        borderBottomRightRadius: r,
+        borderBottomLeftRadius: 6,
+        borderWidth: 1.5,
+        borderColor: COLORS.hairline,
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
+// CD-47: swipe-up drawer — collapsed = 220px result bar: dab swatch, Fraunces
+// best-match name, ΔE badge, two close-match chips, "View all matches" CTA,
+// and an "+ Compare" chip that adds the current scan to the compare set.
 // Expanded = full overlay with calibration pill, filter controls, footer hint.
 function ScanDrawer({
   colorInfo,
@@ -316,6 +341,7 @@ function ScanDrawer({
   const translateY = useRef(new Animated.Value(DRAWER_TRANSLATE_COLLAPSED)).current;
   const expandedRef = useRef(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [compareAdded, setCompareAdded] = useState(false);
 
   const expand = useCallback(() => {
     expandedRef.current = true;
@@ -343,25 +369,75 @@ function ScanDrawer({
   const top1Match = matches[0];
   const hint = lightingHint(rawRgb);
 
+  // Reset the compare chip when the scan lands on a different colour.
+  useEffect(() => { setCompareAdded(false); }, [colorInfo.hex]);
+
   return (
     <Animated.View
       style={[styles.drawer, { transform: [{ translateY }] }]}
       {...panResponder.panHandlers}
     >
-      {/* 64px docked result bar — always the first visible section */}
+      {/* 220px docked result bar — dab, Fraunces name, ΔE badge, chips, CTA */}
       <View style={styles.resultBar}>
-        <View style={[styles.resultSwatch, { backgroundColor: colorInfo.hex }]} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.resultName} numberOfLines={1}>
-            {top1Match ? top1Match.paint.name : colorInfo.name}
-          </Text>
-          <Text style={styles.resultSub} numberOfLines={1}>
-            {top1Match ? `${top1Match.paint.brand} · ${colorInfo.hex}` : colorInfo.hex}
-          </Text>
+        {/* Row 1: dab swatch + name/ΔE badge + chevron */}
+        <View style={styles.resultTop}>
+          <DabSwatch color={colorInfo.hex} size={60} />
+          <View style={styles.resultNameBlock}>
+            <Text style={styles.resultName} numberOfLines={1}>
+              {top1Match ? top1Match.paint.name : colorInfo.name}
+            </Text>
+            {top1Match && (
+              <View style={styles.deBadge}>
+                <Text style={styles.deBadgeText}>
+                  {`ΔE ${top1Match.deltaE.toFixed(1)} — ${top1Match.closeness.toLowerCase()}`}
+                </Text>
+              </View>
+            )}
+          </View>
+          <TouchableOpacity
+            onPress={isExpanded ? collapse : expand}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Text style={styles.resultChevron}>{isExpanded ? '⌄' : '⌃'}</Text>
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity onPress={isExpanded ? collapse : expand} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Text style={styles.resultChevron}>{isExpanded ? '⌄' : '⌃'}</Text>
-        </TouchableOpacity>
+
+        {/* Row 2: two closest-match chips */}
+        {matches.length > 1 && (
+          <View style={styles.resultChips}>
+            {matches.slice(1, 3).map((m, i) => (
+              <View key={i} style={styles.matchChip}>
+                <View style={[styles.matchChipSwatch, { backgroundColor: m.paint.hex }]} />
+                <Text style={styles.matchChipText} numberOfLines={1}>{m.paint.name}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Row 3: "View all matches" CTA + "+ Compare" chip */}
+        <View style={styles.resultActions}>
+          <TouchableOpacity
+            style={styles.viewAllBtn}
+            onPress={expand}
+            disabled={isExpanded}
+          >
+            <Text style={styles.viewAllBtnText}>View all matches ›</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.addCompareChip, compareAdded && styles.addCompareChipAdded]}
+            onPress={async () => {
+              if (compareAdded) return;
+              const name = top1Match ? top1Match.paint.name : colorInfo.name;
+              const item = captureToCompareItem(colorInfo.hex, name, Date.now(), 'scan');
+              await addToCompareSet(item);
+              setCompareAdded(true);
+            }}
+          >
+            <Text style={[styles.addCompareChipText, compareAdded && styles.addCompareChipTextAdded]}>
+              {compareAdded ? '✓ Added' : '+ Compare'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Drag handle — visible only in expanded state (sits below the result bar) */}
@@ -1067,24 +1143,74 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
 
-  // CD-41: 64px docked result bar (replaces peek + stats row)
+  // CD-47: 220px docked result bar — dab, Fraunces name, ΔE badge, chips, CTA
   resultBar: {
     height: PEEK_HEIGHT,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
     paddingHorizontal: 16,
-    gap: 12,
+    paddingVertical: 16,
+    gap: 10,
     backgroundColor: COLORS.bg,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
-  resultSwatch: {
-    width: 32, height: 32, borderRadius: 8,
-    borderWidth: 1.5, borderColor: COLORS.border,
+  resultTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  resultName: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
-  resultSub: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
+  resultNameBlock: {
+    flex: 1,
+    gap: 5,
+    minWidth: 0,
+  },
+  resultName: {
+    color: COLORS.text, fontSize: 17, fontWeight: '700',
+    ...FONTS.serifBold,
+  },
+  deBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 10, backgroundColor: COLORS.accentSoft,
+  },
+  deBadgeText: { color: COLORS.accent, fontSize: 11, fontWeight: '600' },
   resultChevron: { color: COLORS.purple, fontSize: 20, fontWeight: '800' },
+  resultChips: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  matchChip: {
+    flex: 1, minWidth: 0,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: COLORS.card,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  matchChipSwatch: {
+    width: 14, height: 14, borderRadius: 7,
+    borderWidth: 1, borderColor: COLORS.hairline, flexShrink: 0,
+  },
+  matchChipText: { color: COLORS.textMuted, fontSize: 11, flex: 1 },
+  resultActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  viewAllBtn: { paddingVertical: 4 },
+  viewAllBtnText: { color: COLORS.accent, fontSize: 13, fontWeight: '600' },
+  addCompareChip: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: COLORS.accentSoft,
+    borderWidth: 1, borderColor: COLORS.accent,
+  },
+  addCompareChipAdded: {
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.border,
+  },
+  addCompareChipText: { color: COLORS.accent, fontSize: 12, fontWeight: '700' },
+  addCompareChipTextAdded: { color: COLORS.textMuted },
 
   // Drag handle — sits below result bar, visible only when expanded
   drawerHandle: {
@@ -1098,7 +1224,7 @@ const styles = StyleSheet.create({
 
   drawerExpanded: {
     flex: 1,
-    backgroundColor: 'rgba(10,14,26,0.98)',
+    backgroundColor: COLORS.bg,
     paddingBottom: 20,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
@@ -1111,7 +1237,7 @@ const styles = StyleSheet.create({
     paddingBottom: PEEK_HEIGHT + 20, zIndex: 30,
   },
   calibCard: {
-    backgroundColor: 'rgba(13,14,26,0.94)', borderRadius: 16,
+    backgroundColor: COLORS.card, borderRadius: 16,
     paddingHorizontal: 20, paddingVertical: 16,
     marginHorizontal: 24, maxWidth: 420,
     borderWidth: 1, borderColor: COLORS.border,
