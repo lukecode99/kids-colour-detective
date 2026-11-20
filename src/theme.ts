@@ -153,8 +153,48 @@ export const OVERLAY = {
   ringSoft: 'rgba(255,255,255,0.4)',
 };
 
+// The site's two typefaces: Fraunces (a warm serif) for colour names and headings,
+// Inter for everything else. Both are loaded by expo-font in App.tsx from the
+// @expo-google-fonts packages; the family strings below are those packages' export
+// names. Route headings through SERIF and body through BODY rather than hardcoding a
+// family at call sites, so swapping a weight is one edit here.
+export const FONT_FAMILY = {
+  serif: 'Fraunces_600SemiBold',
+  serifBold: 'Fraunces_700Bold',
+  body: 'Inter_400Regular',
+  bodyMedium: 'Inter_500Medium',
+  bodySemiBold: 'Inter_600SemiBold',
+  bodyBold: 'Inter_700Bold',
+};
+
+// Set true by App.tsx once useFonts resolves. If a font token is read before the
+// loader finishes, the family name is unregistered — iOS substitutes the system face,
+// but Android would draw tofu boxes — so the App gates its first render on this.
+let _fontsLoaded = false;
+export function markFontsLoaded() {
+  _fontsLoaded = true;
+}
+export function fontsReady(): boolean {
+  return _fontsLoaded;
+}
+
 export const FONTS = {
-  colorName: { fontSize: 52, fontWeight: '800' as const, letterSpacing: -1 },
-  colorNameSub: { fontSize: 22, fontWeight: '600' as const },
+  // The hero colour name on the scan result is the site's signature — Fraunces, big.
+  // Custom-font families carry their own weight, so the fontWeight here is only the
+  // fallback face's weight until the font loads.
+  colorName: {
+    fontSize: 52,
+    fontWeight: '800' as const,
+    letterSpacing: -1,
+    fontFamily: FONT_FAMILY.serifBold,
+  },
+  colorNameSub: { fontSize: 22, fontWeight: '600' as const, fontFamily: FONT_FAMILY.serif },
   toggle: { fontSize: 14, fontWeight: '700' as const },
+  // Family tokens — spread into a text style, e.g. `...FONTS.serif`.
+  serif: { fontFamily: FONT_FAMILY.serif },
+  serifBold: { fontFamily: FONT_FAMILY.serifBold },
+  body: { fontFamily: FONT_FAMILY.body },
+  bodyMedium: { fontFamily: FONT_FAMILY.bodyMedium },
+  bodySemiBold: { fontFamily: FONT_FAMILY.bodySemiBold },
+  bodyBold: { fontFamily: FONT_FAMILY.bodyBold },
 };

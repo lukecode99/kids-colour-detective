@@ -1,10 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Platform, View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import {
+  useFonts,
+  Fraunces_600SemiBold,
+  Fraunces_700Bold,
+} from '@expo-google-fonts/fraunces';
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from '@expo-google-fonts/inter';
 import CameraScreen from './src/screens/CameraScreen';
 import WheelScreen from './src/screens/WheelScreen';
-import BrandMatchScreen from './src/screens/BrandMatchScreen';
+import CompareScreen from './src/screens/CompareScreen';
 import MyColoursScreen, { useSavedColors } from './src/screens/MyColoursScreen';
-import { COLORS } from './src/theme';
+import { COLORS, markFontsLoaded } from './src/theme';
 
 interface State {
   hasError: boolean;
@@ -34,18 +45,19 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, State
   }
 }
 
-// CD-40: 4 tabs — Scan · Brand Match · Planner · Saved.
-// "My Colours" renamed to "Saved", Brand Match promoted to top-level.
-type TabKey = 'scan' | 'brandmatch' | 'planner' | 'saved';
+// CD v2 (20-Nov, Same Tin port): 4 tabs — Scan · My Colours · Compare · Planner.
+// Brand Swap is retired in favour of Compare (search any brand by name, up to 4 side
+// by side); the saved list keeps its 'saved' key but shows as "My Colours".
+type TabKey = 'scan' | 'saved' | 'compare' | 'planner';
 
 // Renders an SVG icon from the design mock.
 // Web: native <svg> element via React.createElement (React Native Web passes it through).
 // Native: Unicode/emoji fallback.
 const NATIVE_ICONS: Record<TabKey, string> = {
   scan: '🔍',
-  brandmatch: '⭐',
-  planner: '🎡',
   saved: '🔖',
+  compare: '⚖️',
+  planner: '🎡',
 };
 
 function TabIcon({ tab, color, size = 23 }: { tab: TabKey; color: string; size?: number }) {
@@ -68,9 +80,11 @@ function TabIcon({ tab, color, size = 23 }: { tab: TabKey; color: string; size?:
         ce('circle', { key: 'c', cx: 11, cy: 11, r: 7 }),
         ce('path', { key: 'p', d: 'M21 21l-4.3-4.3' }),
       );
-    case 'brandmatch':
+    case 'compare':
+      // Two overlapping swatch cards — the side-by-side motif.
       return ce('svg', p,
-        ce('path', { key: 'p', d: 'M12 3l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 8.7l5.4-.8z' }),
+        ce('rect', { key: 'a', x: 3, y: 6, width: 10, height: 13, rx: 2 }),
+        ce('rect', { key: 'b', x: 11, y: 3, width: 10, height: 13, rx: 2 }),
       );
     case 'planner':
       return ce('svg', p,
@@ -95,9 +109,9 @@ function ActiveIndicator() {
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'scan', label: 'Scan' },
-  { key: 'brandmatch', label: 'Brand Swap' },
+  { key: 'saved', label: 'My Colours' },
+  { key: 'compare', label: 'Compare' },
   { key: 'planner', label: 'Planner' },
-  { key: 'saved', label: 'Saved' },
 ];
 
 // Inactive tabs unmount entirely: stops the camera loop when you leave Scan,
@@ -111,9 +125,9 @@ function TabRoot() {
     <View style={styles.root}>
       <View style={{ flex: 1 }}>
         {tab === 'scan' && <CameraScreen />}
-        {tab === 'brandmatch' && <BrandMatchScreen />}
-        {tab === 'planner' && <WheelScreen />}
         {tab === 'saved' && <MyColoursScreen />}
+        {tab === 'compare' && <CompareScreen />}
+        {tab === 'planner' && <WheelScreen />}
       </View>
       <SafeAreaView style={styles.tabBarSafe}>
         <View style={styles.tabBar}>
@@ -150,6 +164,29 @@ function TabRoot() {
 }
 
 export default function App() {
+  // Load the site's two typefaces (Fraunces for colour names/headings, Inter for body)
+  // before first paint, so nothing renders in the fallback face and then reflows. The
+  // family strings here must match FONT_FAMILY in theme.ts.
+  const [fontsLoaded] = useFonts({
+    Fraunces_600SemiBold,
+    Fraunces_700Bold,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+  });
+
+  useEffect(() => {
+    if (fontsLoaded) markFontsLoaded();
+  }, [fontsLoaded]);
+
+  // Hold on a blank paper-coloured screen until the fonts resolve. useFonts never
+  // leaves this false indefinitely — on error it still flips true and we fall back to
+  // the system face — so this can't wedge the app.
+  if (!fontsLoaded) {
+    return <View style={{ flex: 1, backgroundColor: COLORS.bg }} />;
+  }
+
   if (Platform.OS === 'web') {
     return (
       <ErrorBoundary>

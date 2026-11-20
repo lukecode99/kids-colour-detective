@@ -20,7 +20,7 @@ import {
   SURFACE_OPTIONS,
   FINISH_OPTIONS,
 } from '../utils/filters';
-import { COLORS } from '../theme';
+import { COLORS, FONTS } from '../theme';
 
 export function bestMatchLabel(matches: PaintMatch[]): string {
   const info = bestMatchInfo(matches);
@@ -196,12 +196,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', paddingVertical: 4,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.hairline,
   },
+  // Dab motif (site parity): border-radius 50% 50% 50% 6px scaled to 18px.
   matchListSwatch: {
-    width: 18, height: 18, borderRadius: 4, marginRight: 10,
+    width: 18, height: 18, marginRight: 10,
+    borderTopLeftRadius: 9, borderTopRightRadius: 9, borderBottomRightRadius: 9,
+    borderBottomLeftRadius: 4,
     borderWidth: StyleSheet.hairlineWidth, borderColor: COLORS.hairlineStrong,
   },
   matchListText: { flex: 1 },
-  matchListName: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  matchListName: { color: COLORS.text, fontSize: 14, ...FONTS.serif, fontWeight: '600' },
   matchListBrand: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
   matchListPct: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginLeft: 8 },
 });
