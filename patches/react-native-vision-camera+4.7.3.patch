@@ -81,6 +81,18 @@ index 0000000..f9a00e7
 +    }
 +  }
 +}
+diff --git a/node_modules/react-native-vision-camera/ios/React/CameraViewManager.m b/node_modules/react-native-vision-camera/ios/React/CameraViewManager.m
+index 527c9bc..cc89608 100644
+--- a/node_modules/react-native-vision-camera/ios/React/CameraViewManager.m
++++ b/node_modules/react-native-vision-camera/ios/React/CameraViewManager.m
+@@ -88,5 +88,7 @@ RCT_EXTERN_METHOD(takeSnapshot : (nonnull NSNumber*)node options : (NSDictionary
+                       resolve reject : (RCTPromiseRejectBlock)reject);
+ RCT_EXTERN_METHOD(focus : (nonnull NSNumber*)node point : (NSDictionary*)point resolve : (RCTPromiseResolveBlock)
+                       resolve reject : (RCTPromiseRejectBlock)reject);
++RCT_EXTERN_METHOD(lockAEWB : (nonnull NSNumber*)node resolve : (RCTPromiseResolveBlock)resolve reject : (RCTPromiseRejectBlock)reject);
++RCT_EXTERN_METHOD(unlockAEWB : (nonnull NSNumber*)node resolve : (RCTPromiseResolveBlock)resolve reject : (RCTPromiseRejectBlock)reject);
+ 
+ @end
 diff --git a/node_modules/react-native-vision-camera/ios/React/CameraViewManager.swift b/node_modules/react-native-vision-camera/ios/React/CameraViewManager.swift
 index f7bd9e8..80157ca 100644
 --- a/node_modules/react-native-vision-camera/ios/React/CameraViewManager.swift

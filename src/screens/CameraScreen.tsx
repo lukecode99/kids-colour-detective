@@ -781,18 +781,28 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
     loadSavedColors().then(list => setSavedCount(list.length));
   }, []);
 
-  // CD-31: lock AE+WB once the camera device is ready so the frame processor
-  // receives consistent exposure and white-balance values across all readings.
+  // CD-31: AE/WB lock state — lock engages when scan readings first go stable
+  // on the current scene; releases after 3 consecutive unstable readings so
+  // the camera re-adapts when the user moves. Also fires at calibration lock.
+  const aewbLockedRef = useRef(false);
+  const unstableCountRef = useRef(0);
+
+  // Dev-only: warn once if the patch wasn't applied and the bridge method is missing.
+  useEffect(() => {
+    if (__DEV__ && NativeModules.CameraView?.lockAEWB === undefined) {
+      console.warn('[CD-31] NativeModules.CameraView.lockAEWB is undefined — patch-package patch may not have been applied.');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Unlock AE+WB on unmount / device change so the camera returns to auto.
   useEffect(() => {
     if (!device) return;
-    const timer = setTimeout(() => {
-      const handle = findNodeHandle(cameraRef.current);
-      if (handle) NativeModules.CameraView?.lockAEWB?.(handle)?.catch?.(() => {});
-    }, 600);
     return () => {
-      clearTimeout(timer);
       const handle = findNodeHandle(cameraRef.current);
       if (handle) NativeModules.CameraView?.unlockAEWB?.(handle)?.catch?.(() => {});
+      aewbLockedRef.current = false;
+      unstableCountRef.current = 0;
     };
   }, [device]);
 
@@ -809,6 +819,25 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
       const stable = isStable(historyRef.current);
       setIsUnstable(historyRef.current.length >= 2 && !stable);
       setCalibStable(stable);
+
+      // CD-31: lock when scene settles, release after 3 consecutive unstable reads.
+      if (stable) {
+        unstableCountRef.current = 0;
+        if (!aewbLockedRef.current) {
+          const handle = findNodeHandle(cameraRef.current);
+          if (handle) NativeModules.CameraView?.lockAEWB?.(handle)?.catch?.(() => {});
+          aewbLockedRef.current = true;
+        }
+      } else {
+        unstableCountRef.current += 1;
+        if (aewbLockedRef.current && unstableCountRef.current >= 3) {
+          const handle = findNodeHandle(cameraRef.current);
+          if (handle) NativeModules.CameraView?.unlockAEWB?.(handle)?.catch?.(() => {});
+          aewbLockedRef.current = false;
+          unstableCountRef.current = 0;
+        }
+      }
+
       const stab = stabilizedRgb(historyRef.current);
       stabRgbRef.current = stab;
       setCalibRgb(stab);
@@ -881,6 +910,12 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
     const [r, g, b] = stabRgbRef.current;
     whiteRefValueRef.current = { r, g, b };
     setWhiteRefMode('locked');
+    // CD-31: guarantee AE/WB lock at the moment the user confirms calibration.
+    if (!aewbLockedRef.current) {
+      const handle = findNodeHandle(cameraRef.current);
+      if (handle) NativeModules.CameraView?.lockAEWB?.(handle)?.catch?.(() => {});
+      aewbLockedRef.current = true;
+    }
   }, []);
 
   const saveColor = useCallback(async () => {
