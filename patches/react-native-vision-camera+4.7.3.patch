@@ -1,0 +1,108 @@
+diff --git a/node_modules/react-native-vision-camera/ios/Core/CameraSession+AEWBLock.swift b/node_modules/react-native-vision-camera/ios/Core/CameraSession+AEWBLock.swift
+new file mode 100644
+index 0000000..4f3eba1
+--- /dev/null
++++ b/node_modules/react-native-vision-camera/ios/Core/CameraSession+AEWBLock.swift
+@@ -0,0 +1,48 @@
++//
++//  CameraSession+AEWBLock.swift
++//  VisionCamera — CD-31 patch
++//
++//  Exposes AVCaptureDevice AE + WB lock so the frame processor sees
++//  consistent values during calibration and scanning.
++//
++
++import AVFoundation
++import Foundation
++
++extension CameraSession {
++  func lockAEWB() throws {
++    guard let device = videoDeviceInput?.device else {
++      throw CameraError.session(SessionError.cameraNotReady)
++    }
++    do {
++      try device.lockForConfiguration()
++      if device.isExposureModeSupported(.locked) {
++        device.exposureMode = .locked
++      }
++      if device.isWhiteBalanceModeSupported(.locked) {
++        device.whiteBalanceMode = .locked
++      }
++      device.unlockForConfiguration()
++    } catch {
++      throw CameraError.device(DeviceError.configureError)
++    }
++  }
++
++  func unlockAEWB() throws {
++    guard let device = videoDeviceInput?.device else {
++      throw CameraError.session(SessionError.cameraNotReady)
++    }
++    do {
++      try device.lockForConfiguration()
++      if device.isExposureModeSupported(.continuousAutoExposure) {
++        device.exposureMode = .continuousAutoExposure
++      }
++      if device.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
++        device.whiteBalanceMode = .continuousAutoWhiteBalance
++      }
++      device.unlockForConfiguration()
++    } catch {
++      throw CameraError.device(DeviceError.configureError)
++    }
++  }
++}
+diff --git a/node_modules/react-native-vision-camera/ios/React/CameraView+AEWBLock.swift b/node_modules/react-native-vision-camera/ios/React/CameraView+AEWBLock.swift
+new file mode 100644
+index 0000000..f9a00e7
+--- /dev/null
++++ b/node_modules/react-native-vision-camera/ios/React/CameraView+AEWBLock.swift
+@@ -0,0 +1,23 @@
++//
++//  CameraView+AEWBLock.swift
++//  VisionCamera — CD-31 patch
++//
++
++import AVFoundation
++import Foundation
++
++extension CameraView {
++  func lockAEWB(promise: Promise) {
++    withPromise(promise) {
++      try self.cameraSession.lockAEWB()
++      return nil
++    }
++  }
++
++  func unlockAEWB(promise: Promise) {
++    withPromise(promise) {
++      try self.cameraSession.unlockAEWB()
++      return nil
++    }
++  }
++}
+diff --git a/node_modules/react-native-vision-camera/ios/React/CameraViewManager.swift b/node_modules/react-native-vision-camera/ios/React/CameraViewManager.swift
+index f7bd9e8..80157ca 100644
+--- a/node_modules/react-native-vision-camera/ios/React/CameraViewManager.swift
++++ b/node_modules/react-native-vision-camera/ios/React/CameraViewManager.swift
+@@ -96,6 +96,20 @@ final class CameraViewManager: RCTViewManager {
+     component.focus(point: CGPoint(x: x.doubleValue, y: y.doubleValue), promise: promise)
+   }
+ 
++  // CD-31: AE + WB lock — engages during calibration and scanning for
++  // consistent colour readings under fixed lighting.
++  @objc
++  final func lockAEWB(_ node: NSNumber, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
++    let component = getCameraView(withTag: node)
++    component.lockAEWB(promise: Promise(resolver: resolve, rejecter: reject))
++  }
++
++  @objc
++  final func unlockAEWB(_ node: NSNumber, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
++    let component = getCameraView(withTag: node)
++    component.unlockAEWB(promise: Promise(resolver: resolve, rejecter: reject))
++  }
++
+   @objc
+   final func getCameraPermissionStatus() -> String {
+     let status = AVCaptureDevice.authorizationStatus(for: .video)

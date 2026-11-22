@@ -18,20 +18,30 @@ export interface ViewTransform {
 export const MIN_ZOOM = 1;
 export const MAX_ZOOM = 8;
 
-// Median per channel: deterministic for a fixed sample window, robust to
-// single-pixel noise/outliers — repeated taps on the same spot always give
-// the same colour.
+// Median per channel with IQR outlier rejection (CD-48).
+// Pixels outside [Q1 − 1.5·IQR, Q3 + 1.5·IQR] on any channel are stripped
+// per-channel before the median, removing specular highlights, sensor noise,
+// and shadow speckle that would otherwise bias the reading.
+// Deterministic: same window → same result every time.
 export function medianRgb(pixels: Rgb[]): Rgb {
   if (!pixels.length) return [128, 128, 128];
-  const median = (values: number[]): number => {
+  const robustChannel = (values: number[]): number => {
     const sorted = [...values].sort((a, b) => a - b);
-    const mid = sorted.length >> 1;
-    return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+    const n = sorted.length;
+    const q1 = sorted[Math.floor(n * 0.25)];
+    const q3 = sorted[Math.floor(n * 0.75)];
+    const iqr = q3 - q1;
+    const lo = q1 - 1.5 * iqr;
+    const hi = q3 + 1.5 * iqr;
+    const inliers = sorted.filter(v => v >= lo && v <= hi);
+    const pool = inliers.length ? inliers : sorted;
+    const mid = pool.length >> 1;
+    return pool.length % 2 ? pool[mid] : Math.round((pool[mid - 1] + pool[mid]) / 2);
   };
   return [
-    median(pixels.map(p => p[0])),
-    median(pixels.map(p => p[1])),
-    median(pixels.map(p => p[2])),
+    robustChannel(pixels.map(p => p[0])),
+    robustChannel(pixels.map(p => p[1])),
+    robustChannel(pixels.map(p => p[2])),
   ];
 }
 

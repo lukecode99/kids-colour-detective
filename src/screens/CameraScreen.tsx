@@ -10,6 +10,8 @@ import {
   Linking,
   Animated,
   PanResponder,
+  NativeModules,
+  findNodeHandle,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
@@ -778,6 +780,21 @@ function NativeCameraScreen({ onOpenPhoto }: { onOpenPhoto: () => void }) {
   useEffect(() => {
     loadSavedColors().then(list => setSavedCount(list.length));
   }, []);
+
+  // CD-31: lock AE+WB once the camera device is ready so the frame processor
+  // receives consistent exposure and white-balance values across all readings.
+  useEffect(() => {
+    if (!device) return;
+    const timer = setTimeout(() => {
+      const handle = findNodeHandle(cameraRef.current);
+      if (handle) NativeModules.CameraView?.lockAEWB?.(handle)?.catch?.(() => {});
+    }, 600);
+    return () => {
+      clearTimeout(timer);
+      const handle = findNodeHandle(cameraRef.current);
+      if (handle) NativeModules.CameraView?.unlockAEWB?.(handle)?.catch?.(() => {});
+    };
+  }, [device]);
 
   const onSample = useRunOnJS(
     (flat: number[]) => {

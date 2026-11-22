@@ -51,6 +51,43 @@ describe('medianRgb', () => {
     medianRgb(pixels);
     expect(pixels[0]).toEqual([3, 3, 3]);
   });
+
+  // CD-48 — IQR outlier rejection tests
+  it('CD-48: excludes a specular-highlight outlier (255) from a grey surface', () => {
+    // 80 pixels of mid-grey wall, 1 saturated specular pixel
+    const wall: Rgb[] = Array.from({ length: 80 }, () => [130, 120, 110] as Rgb);
+    expect(medianRgb([...wall, [255, 255, 255]])).toEqual([130, 120, 110]);
+  });
+
+  it('CD-48: excludes a shadow outlier (0) from a light surface', () => {
+    const surface: Rgb[] = Array.from({ length: 80 }, () => [220, 215, 200] as Rgb);
+    expect(medianRgb([[0, 0, 0], ...surface])).toEqual([220, 215, 200]);
+  });
+
+  it('CD-48: handles multiple outliers — 5 extreme pixels in an 81-pixel grid', () => {
+    const wall: Rgb[] = Array.from({ length: 76 }, () => [160, 150, 140] as Rgb);
+    const outliers: Rgb[] = Array.from({ length: 5 }, () => [255, 255, 255] as Rgb);
+    // Result should be the wall colour, not biased towards white
+    expect(medianRgb([...wall, ...outliers])).toEqual([160, 150, 140]);
+  });
+
+  it('CD-48: uniform surface — IQR=0 edge case returns the constant colour', () => {
+    const pixels: Rgb[] = Array.from({ length: 81 }, () => [180, 170, 160] as Rgb);
+    expect(medianRgb(pixels)).toEqual([180, 170, 160]);
+  });
+
+  it('CD-48: narrow noise range — slight texture variation does not get wiped out', () => {
+    // Surface with values spread ±10 around 128 — none should be excluded
+    const pixels: Rgb[] = Array.from({ length: 81 }, (_, i) => [
+      120 + (i % 20),
+      120 + (i % 20),
+      120 + (i % 20),
+    ] as Rgb);
+    const result = medianRgb(pixels);
+    // Median of 120…139 spread ≈ 129
+    expect(result[0]).toBeGreaterThanOrEqual(120);
+    expect(result[0]).toBeLessThanOrEqual(139);
+  });
 });
 
 describe('containFit', () => {
