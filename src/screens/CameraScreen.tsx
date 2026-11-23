@@ -116,7 +116,7 @@ function CalibrationChooser({
   const preferred = usePreferredSurface();
   return (
     <View style={styles.calibOverlay} pointerEvents="box-none">
-      <SafeAreaView>
+      <SafeAreaView pointerEvents="box-none">
         <View style={styles.calibCard}>
           <Text style={styles.calibTitle}>🎯 Calibrate matching</Text>
           <Text style={styles.calibText}>What will you hold up to the camera?</Text>
@@ -174,7 +174,7 @@ function CalibrationOverlay({
   const surfaceName = surface === 'card' ? 'your grey card' : 'your white paper (not glossy)';
   return (
     <View style={styles.calibOverlay} pointerEvents="box-none">
-      <SafeAreaView>
+      <SafeAreaView pointerEvents="box-none">
         <View style={styles.calibCard}>
           <Text style={styles.calibTitle}>🎯 Calibrate matching</Text>
           <Text style={styles.calibText}>
@@ -1077,8 +1077,10 @@ const styles = StyleSheet.create({
   permButtonText: { color: COLORS.text, fontSize: 16, fontWeight: '700' },
 
   // --- Top controls: calibration bar + torch (CD-43) ---
+  // zIndex 35 keeps the torch button above calibOverlay (30) during calibration so
+  // it stays visible and tappable in low light — exactly when users calibrate.
   topControls: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 24,
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 35,
   },
   torchRow: {
     alignItems: 'flex-end',
