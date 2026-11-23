@@ -116,38 +116,40 @@ function CalibrationChooser({
   const preferred = usePreferredSurface();
   return (
     <View style={styles.calibOverlay} pointerEvents="box-none">
-      <View style={styles.calibCard}>
-        <Text style={styles.calibTitle}>🎯 Calibrate matching</Text>
-        <Text style={styles.calibText}>What will you hold up to the camera?</Text>
-        <TouchableOpacity
-          style={[styles.chooserBtn, preferred === 'paper' && styles.chooserBtnPreferred]}
-          onPress={() => onChoose('paper')}
-        >
-          <Text style={styles.chooserBtnTitle}>📄 Ordinary white paper</Text>
-          <Text style={styles.chooserBtnSub}>Any plain sheet — quick and easy</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.chooserBtn, preferred === 'card' && styles.chooserBtnPreferred]}
-          onPress={() => onChoose('card')}
-        >
-          <Text style={styles.chooserBtnTitle}>🎞 {GREY_CARD_PRODUCT_NAME}</Text>
-          <Text style={styles.chooserBtnSub}>The most accurate reference</Text>
-        </TouchableOpacity>
-        {GREY_CARD_LINK_ENABLED && (
+      <SafeAreaView>
+        <View style={styles.calibCard}>
+          <Text style={styles.calibTitle}>🎯 Calibrate matching</Text>
+          <Text style={styles.calibText}>What will you hold up to the camera?</Text>
           <TouchableOpacity
-            style={styles.chooserGetOne}
-            onPress={() => Linking.openURL(greyCardUrl()).catch(() => {})}
-            hitSlop={{ top: 6, bottom: 6 }}
+            style={[styles.chooserBtn, preferred === 'paper' && styles.chooserBtnPreferred]}
+            onPress={() => onChoose('paper')}
           >
-            <Text style={styles.chooserGetOneText}>🛒 Get one · Amazon</Text>
+            <Text style={styles.chooserBtnTitle}>📄 Ordinary white paper</Text>
+            <Text style={styles.chooserBtnSub}>Any plain sheet — quick and easy</Text>
           </TouchableOpacity>
-        )}
-        <View style={styles.calibBtnRow}>
-          <TouchableOpacity style={styles.calibCancel} onPress={onCancel}>
-            <Text style={styles.calibCancelText}>Cancel</Text>
+          <TouchableOpacity
+            style={[styles.chooserBtn, preferred === 'card' && styles.chooserBtnPreferred]}
+            onPress={() => onChoose('card')}
+          >
+            <Text style={styles.chooserBtnTitle}>🎞 {GREY_CARD_PRODUCT_NAME}</Text>
+            <Text style={styles.chooserBtnSub}>The most accurate reference</Text>
           </TouchableOpacity>
+          {GREY_CARD_LINK_ENABLED && (
+            <TouchableOpacity
+              style={styles.chooserGetOne}
+              onPress={() => Linking.openURL(greyCardUrl()).catch(() => {})}
+              hitSlop={{ top: 6, bottom: 6 }}
+            >
+              <Text style={styles.chooserGetOneText}>🛒 Get one · Amazon</Text>
+            </TouchableOpacity>
+          )}
+          <View style={styles.calibBtnRow}>
+            <TouchableOpacity style={styles.calibCancel} onPress={onCancel}>
+              <Text style={styles.calibCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </SafeAreaView>
     </View>
   );
 }
@@ -172,36 +174,38 @@ function CalibrationOverlay({
   const surfaceName = surface === 'card' ? 'your grey card' : 'your white paper (not glossy)';
   return (
     <View style={styles.calibOverlay} pointerEvents="box-none">
-      <View style={styles.calibCard}>
-        <Text style={styles.calibTitle}>🎯 Calibrate matching</Text>
-        <Text style={styles.calibText}>
-          Hold {surfaceName} so it fills the circle, then lock.
-        </Text>
-        <View style={styles.calibSwatchRow}>
-          <View style={[styles.calibSwatch, { backgroundColor: hex }]} />
-          <Text style={styles.calibHex}>{hex}</Text>
-        </View>
-        {!ok && (
-          <Text style={styles.calibWarn}>
-            That doesn't look like a neutral surface — fill the circle with {surfaceName}
+      <SafeAreaView>
+        <View style={styles.calibCard}>
+          <Text style={styles.calibTitle}>🎯 Calibrate matching</Text>
+          <Text style={styles.calibText}>
+            Hold {surfaceName} so it fills the circle, then lock.
           </Text>
-        )}
-        {ok && !stable && (
-          <Text style={styles.calibWarn}>Hold steady…</Text>
-        )}
-        <View style={styles.calibBtnRow}>
-          <TouchableOpacity style={styles.calibCancel} onPress={onCancel}>
-            <Text style={styles.calibCancelText}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.calibLock, !canLock && styles.calibLockDisabled]}
-            onPress={onLock}
-            disabled={!canLock}
-          >
-            <Text style={[styles.calibLockText, !canLock && styles.calibLockTextDisabled]}>Lock</Text>
-          </TouchableOpacity>
+          <View style={styles.calibSwatchRow}>
+            <View style={[styles.calibSwatch, { backgroundColor: hex }]} />
+            <Text style={styles.calibHex}>{hex}</Text>
+          </View>
+          {!ok && (
+            <Text style={styles.calibWarn}>
+              That doesn't look like a neutral surface — fill the circle with {surfaceName}
+            </Text>
+          )}
+          {ok && !stable && (
+            <Text style={styles.calibWarn}>Hold steady…</Text>
+          )}
+          <View style={styles.calibBtnRow}>
+            <TouchableOpacity style={styles.calibCancel} onPress={onCancel}>
+              <Text style={styles.calibCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.calibLock, !canLock && styles.calibLockDisabled]}
+              onPress={onLock}
+              disabled={!canLock}
+            >
+              <Text style={[styles.calibLockText, !canLock && styles.calibLockTextDisabled]}>Lock</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </SafeAreaView>
     </View>
   );
 }
@@ -1283,10 +1287,12 @@ const styles = StyleSheet.create({
   },
 
   // --- Calibration overlays ---
+  // Card is anchored to the top (SafeAreaView handles status-bar inset).
+  // This keeps it above the circle (vertically centered on screen) on all
+  // iPhone sizes, including SE-class heights, regardless of drawer state.
   calibOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center', justifyContent: 'flex-end',
-    paddingBottom: PEEK_HEIGHT + 20, zIndex: 30,
+    zIndex: 30,
   },
   calibCard: {
     backgroundColor: COLORS.card, borderRadius: 16,
